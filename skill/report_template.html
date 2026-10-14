@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>[ฉบับเต็ม] {{SUBJECT}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ECECEC; --panel:#FFFFFF; --card:#F7F7F7; --line:#EBEBEB; --line-2:#F2F2F2;
+  --ink:#141414; --ink-2:#4A4A4A; --muted:#8A8A8A; --tint:#D9E6EC;
+  --pos:#2E8B62; --neg:#D2483E; --amb:#C98A1B;
+  --font:'Poppins','Prompt','Leelawadee UI','Segoe UI',sans-serif;
+  --shadow:0 18px 40px -22px rgba(0,0,0,.18),0 2px 6px -2px rgba(0,0,0,.04);
+  --r:16px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:24px}
+body{margin:0;color:var(--ink);font:300 15px/1.75 var(--font);
+  background:radial-gradient(1200px 700px at 50% -10%,#F7F7F7,transparent 70%),linear-gradient(#EFEFEF,#E6E6E6)}
+b,strong{font-weight:500}
+.num,td,.kpi b{font-variant-numeric:tabular-nums}
+a{color:inherit}
+
+/* ---------- layout: one white panel on soft grey ---------- */
+.wrap{max-width:1200px;margin:40px auto 60px;background:var(--panel);border-radius:22px;
+  box-shadow:0 30px 80px -40px rgba(0,0,0,.25);padding:0 48px 56px;
+  display:grid;grid-template-columns:200px minmax(0,1fr);gap:44px}
+nav.toc{position:sticky;top:28px;align-self:start;padding-top:56px}
+.toc .label{font:500 11px/1 var(--font);letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:16px}
+.toc ol{list-style:none;margin:0;padding:0}
+.toc a{display:flex;align-items:center;gap:10px;padding:7px 12px;margin:2px 0;border-radius:999px;
+  text-decoration:none;color:var(--ink-2);font-size:13.5px;line-height:1.4;transition:background .2s,color .2s}
+.toc a span{font-size:11px;color:var(--muted);font-weight:500}
+.toc a:hover{background:var(--card)}
+.toc a[aria-current="true"]{background:var(--ink);color:#fff}
+.toc a[aria-current="true"] span{color:#bdbdbd}
+main{min-width:0}
+
+/* ---------- hero ---------- */
+.mast{position:relative;text-align:center;padding:64px 0 48px;margin-bottom:12px;overflow:hidden}
+.mast::before{content:"";position:absolute;left:50%;top:58%;width:900px;height:900px;transform:translate(-50%,-50%);z-index:-1;
+  background:repeating-radial-gradient(circle,transparent 0 118px,rgba(0,0,0,.035) 119px 120px),radial-gradient(circle,#FAFAFA,transparent 60%)}
+.kicker{font:500 11.5px/1 var(--font);letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+.mast h1{font:500 clamp(28px,3.6vw,42px)/1.25 var(--font);margin:16px auto 12px;letter-spacing:-.02em;max-width:30ch;text-wrap:balance}
+.mast .dek{font-size:15.5px;color:var(--muted);max-width:56ch;margin:0 auto}
+.meta{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 10px;margin-top:22px;font-size:12.5px;color:var(--muted)}
+.meta span{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 12px}
+.meta b{color:var(--ink)}
+.stamp{display:inline-flex;align-items:center;gap:14px;margin-top:26px;background:var(--ink);color:#fff;
+  border-radius:999px;padding:7px 8px 7px 24px;font:500 15px/1 var(--font);box-shadow:0 0 0 4px #fff,0 0 0 5px var(--line)}
+.stamp small{display:inline-flex;align-items:center;height:34px;padding:0 14px;border-radius:999px;background:#fff;color:var(--ink);
+  font:500 11px/1 var(--font);letter-spacing:.1em}
+
+/* ---------- sections ---------- */
+section{padding:44px 0 8px;border-top:1px solid var(--line-2);animation:rise .6s ease both}
+section:first-of-type{border-top:0}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}}
+.sh{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin:0 0 22px}
+.sh .no{flex-basis:100%;font:500 11px/1 var(--font);letter-spacing:.2em;color:var(--muted)}
+.sh .no::before{content:"SECTION "}
+.sh h2{font:500 26px/1.3 var(--font);margin:6px 0 0;letter-spacing:-.015em}
+.sh .unit{margin-left:auto;font-size:12px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px 12px}
+h3{font:500 12px/1.5 var(--font);letter-spacing:.16em;text-transform:uppercase;margin:28px 0 12px;color:var(--ink)}
+p{margin:0 0 12px}
+ul.facts{margin:0 0 8px;padding:0;list-style:none}
+ul.facts>li{position:relative;padding:9px 0 9px 20px;border-bottom:1px solid var(--line-2)}
+ul.facts>li:last-child{border-bottom:0}
+ul.facts>li::before{content:"";position:absolute;left:2px;top:20px;width:6px;height:6px;border-radius:50%;background:var(--ink)}
+ul.facts ul{margin:4px 0 0;padding-left:18px;color:var(--ink-2);font-size:14px}
+ul.facts ul li{padding:1px 0}
+ul.facts ul li::marker{color:#C4C4C4}
+.up{color:var(--pos);font-weight:500} .down{color:var(--neg);font-weight:500}
+
+/* ---------- floating cards ---------- */
+.verdict,.kpi,.card,.risk div,.bars,.note,figure button{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.verdict{display:grid;grid-template-columns:auto 1fr;gap:22px;align-items:center;padding:22px 26px;margin-bottom:18px;background:#fff}
+.verdict .big{font:500 44px/1 var(--font);color:var(--neg);letter-spacing:-.03em;white-space:nowrap}
+.verdict .big small{display:block;margin-top:8px;font:500 10.5px/1 var(--font);letter-spacing:.18em;color:var(--muted);text-transform:uppercase}
+.verdict p{margin:0;font-size:15.5px;color:var(--ink-2)}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:0 0 18px}
+.kpi{padding:18px 20px 16px}
+.kpi .k{font:500 10.5px/1.4 var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.kpi b{display:block;font:500 30px/1.15 var(--font);margin:10px 0 4px;letter-spacing:-.02em}
+.kpi .d{font-size:12.5px;color:var(--muted)}
+.kpi.alert b{color:var(--neg)}
+
+.bars{margin:6px 0 20px;padding:20px 22px;background:#fff}
+.bars .t{font:500 10.5px/1.4 var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+.bar{display:grid;grid-template-columns:140px 1fr 64px;gap:14px;align-items:center;font-size:13.5px;margin:9px 0}
+.bar .track{height:8px;border-radius:999px;background:var(--line-2);position:relative;overflow:hidden}
+.bar .fill{position:absolute;inset:0 auto 0 0;border-radius:999px;background:var(--ink);transform-origin:left;animation:grow 1s cubic-bezier(.2,.8,.2,1) .3s both}
+.bar.hot .fill{background:var(--neg)} .bar.ok .fill{background:var(--pos)}
+.bar .v{font-weight:500;font-size:13px;text-align:right}
+@keyframes grow{from{transform:scaleX(0)}}
+.bridge .row{display:grid;grid-template-columns:140px 1fr 1fr 64px;align-items:center;font-size:13.5px;margin:8px 0}
+.bridge .neg,.bridge .pos{height:10px;position:relative}
+.bridge .neg i{position:absolute;right:0;top:0;bottom:0;background:var(--neg);border-radius:999px 0 0 999px}
+.bridge .pos i{position:absolute;left:0;top:0;bottom:0;background:var(--pos);border-radius:0 999px 999px 0}
+.bridge .pos{border-left:1.5px solid var(--ink)}
+.bridge .v{font-weight:500;font-size:13px;text-align:right}
+
+/* ---------- tables ---------- */
+.tbl{overflow-x:auto;margin:4px 0 20px;border:1px solid var(--line);border-radius:var(--r);background:#fff}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:560px}
+th{font:500 10.5px/1.4 var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);text-align:right;padding:14px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+td{padding:11px 16px;text-align:right;border-bottom:1px solid var(--line-2)}
+tr:last-child td{border-bottom:0}
+tbody tr:hover{background:#FCFCFC}
+tr.hl td{font-weight:500;background:#FAFAFA}
+td.focus{background:#F6F9FA;font-weight:500}
+td .pct{color:var(--muted);font-size:12px;margin-left:6px;font-weight:300}
+
+/* ---------- slides ---------- */
+.shots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:16px 0 8px}
+.shots.one{grid-template-columns:minmax(0,1fr)}
+figure{margin:0}
+figure button{all:unset;cursor:zoom-in;display:block;position:relative;padding:8px;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);transition:transform .25s,box-shadow .25s}
+figure button:hover{transform:translateY(-3px);box-shadow:0 26px 50px -24px rgba(0,0,0,.25)}
+figure button:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+figure button::after{content:"›";position:absolute;right:18px;bottom:18px;width:34px;height:34px;border-radius:50%;
+  background:var(--ink);color:#fff;font:400 20px/32px var(--font);text-align:center;box-shadow:0 0 0 4px rgba(255,255,255,.9);opacity:0;transition:opacity .2s}
+figure button:hover::after{opacity:1}
+figure img{display:block;width:100%;height:auto;border-radius:10px}
+figcaption{font-size:12.5px;color:var(--muted);margin:10px 4px 0;line-height:1.5}
+figcaption b{font:500 10.5px var(--font);letter-spacing:.14em;color:var(--ink);margin-right:8px;text-transform:uppercase}
+dialog#lb{border:0;padding:0;background:transparent;max-width:96vw;max-height:94vh}
+dialog#lb::backdrop{background:rgba(236,236,236,.82);backdrop-filter:blur(8px)}
+#lb .frame{max-width:96vw;max-height:86vh;overflow:auto;background:#fff;border-radius:18px;padding:10px;box-shadow:0 40px 90px -30px rgba(0,0,0,.35)}
+#lb img{display:block;max-width:calc(96vw - 20px);max-height:calc(86vh - 20px);border-radius:10px;cursor:zoom-in}
+#lb.zoomed img{max-width:none;max-height:none;width:1800px;cursor:zoom-out}
+#lb .cap{color:var(--ink-2);font-size:13px;margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+#lb .cap button{all:unset;cursor:pointer;font:500 13px var(--font);color:#fff;background:var(--ink);border-radius:999px;padding:8px 18px}
+
+/* ---------- callouts, cards ---------- */
+.note{padding:14px 18px;font-size:14.5px;margin:4px 0 18px;background:#fff;border-left:0;position:relative;padding-left:44px}
+.note::before{content:"!";position:absolute;left:14px;top:15px;width:20px;height:20px;border-radius:50%;background:var(--amb);color:#fff;font:600 12px/20px var(--font);text-align:center}
+.note.red::before{background:var(--neg)}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:6px 0 20px}
+.card{padding:18px 20px}
+.card .k{font:500 10.5px/1.4 var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.card b{display:block;font:500 22px/1.3 var(--font);margin:8px 0 4px}
+.card p{font-size:13px;margin:0;color:var(--ink-2)}
+.mix{display:flex;height:40px;margin:8px 0 8px;font:500 12px/40px var(--font);color:#fff;border-radius:999px;overflow:hidden;box-shadow:var(--shadow)}
+.mix div{padding:0 16px;white-space:nowrap;overflow:hidden}
+.mix div:first-child{background:var(--ink)!important} .mix div:last-child{background:var(--tint)!important;color:var(--ink)}
+.mixlegend{font-size:12.5px;color:var(--muted);margin-bottom:18px}
+.risk{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:4px 0 18px}
+.risk div{padding:16px 18px;font-size:14px;color:var(--ink-2)}
+.risk strong{display:block;font:500 13px/1.5 var(--font);letter-spacing:.12em;text-transform:uppercase;color:var(--ink);margin-bottom:6px}
+.risk .lvl{float:right;font:500 10.5px/1 var(--font);letter-spacing:.08em;padding:5px 10px;border-radius:999px;background:#FDF3E2;color:var(--amb)}
+.risk div.hi .lvl{background:#FBE9E7;color:var(--neg)}
+.owner{display:inline-block;font:500 11.5px/1.6 var(--font);background:#fff;border:1px solid var(--line);color:var(--ink);padding:1px 10px;border-radius:999px;margin:1px 3px 1px 0;white-space:nowrap}
+.due{font-weight:500;font-size:12.5px;color:var(--neg);white-space:nowrap}
+table.actions th,table.actions td{text-align:left;vertical-align:top} table.actions td:first-child{width:24%}
+ol.q{counter-reset:q;list-style:none;margin:0;padding:0;display:grid;gap:10px}
+ol.q li{counter-increment:q;position:relative;padding:14px 18px 14px 62px;background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
+ol.q li::before{content:counter(q,decimal-leading-zero);position:absolute;left:16px;top:13px;width:32px;height:32px;border-radius:50%;background:var(--ink);color:#fff;font:500 12px/32px var(--font);text-align:center}
+footer{font-size:12.5px;color:var(--muted);border-top:1px solid var(--line-2);padding-top:18px;margin-top:28px;text-align:center}
+
+/* ---------- responsive ---------- */
+@media (max-width:980px){
+  .wrap{grid-template-columns:minmax(0,1fr);gap:0;margin:0;border-radius:0;padding:0 16px 48px}
+  nav.toc{position:sticky;top:0;z-index:5;padding:10px 0;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line-2);min-width:0}
+  .toc .label{display:none}
+  .toc ol{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+  .toc a{border:1px solid var(--line);white-space:nowrap;margin:0}
+  .mast{padding:40px 0 30px}
+  .verdict{grid-template-columns:1fr;gap:8px}
+  .kpis{grid-template-columns:repeat(2,1fr)} .cards,.risk,.shots{grid-template-columns:1fr}
+  .bar{grid-template-columns:100px 1fr 56px} .bridge .row{grid-template-columns:100px 1fr 1fr 52px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media print{
+  body{background:#fff;font-size:10.5pt}
+  nav.toc,figure button::after,.mast::before{display:none}
+  .wrap{display:block;margin:0;padding:0;box-shadow:none;max-width:none}
+  section{animation:none}
+  .verdict,.kpi,.card,.risk div,.bars,.note,figure button,.tbl{box-shadow:none}
+  figure,.tbl,.kpis,.verdict{break-inside:avoid}
+  .shots{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc" aria-label="สารบัญ">
+  <div class="label">สารบัญ</div>
+  <ol>
+    <!-- one <li> per section: <li><a href="#s1"><span>01</span>บทสรุปผู้บริหาร</a></li> -->
+  </ol>
+</nav>
+
+<main>
+<header class="mast">
+  <div class="kicker">Board Briefing · {{MEETING TYPE}}</div>
+  <h1>{{HEADLINE}}</h1>
+  <p class="dek">{{ONE-SENTENCE BOTTOM LINE}}</p>
+  <div class="meta"><span>วันที่ <b>{{DATE}}</b></span><span>ระยะเวลา <b>{{DURATION}}</b></span><span>ผู้เข้าร่วม <b>{{PARTIES}}</b></span><span>ที่มา <b>{{SOURCE: สไลด์ + บันทึกเสียง | บันทึกเสียง}}</b></span></div>
+  <!-- optional status stamp, only when the meeting reached a clear verdict:
+  <div class="stamp">ยังไม่อนุมัติ<small>BUDGET 2027 · REWORK</small></div>  (or อนุมัติแล้ว / รอข้อมูล) -->
+</header>
+
+<!-- ===== COMPONENT KIT (copy what fits; delete the rest) =====
+section      <section id="sN"><div class="sh"><span class="no">0N</span><h2>title</h2><span class="unit">หน่วย DKK m</span></div> ... </section>
+verdict      <div class="verdict"><div class="big">3.6%<small>LABEL</small></div><p>one-line why</p></div>
+kpi cards    <div class="kpis"><div class="kpi [alert]"><div class="k">Label · unit</div><b>575.2</b><div class="d"><span class="up|down">▲ 8.1%</span> context</div></div> x6</div>
+growth bars  <div class="bars" role="img" aria-label="..."><div class="t">title</div><div class="bar [ok|hot]"><span>label</span><div class="track"><div class="fill" style="width:XX%"></div></div><span class="v">+8.1%</span></div></div>   (width = value / max value * 100)
+bridge       <div class="bars bridge"><div class="t">title</div><div class="row"><span>label</span><div class="neg"><i style="width:XX%"></i></div><div class="pos"></div><span class="v down">−2.3</span></div></div>
+facts        <ul class="facts"><li><b>Headline:</b> fact<ul><li>sub-fact</li></ul></li></ul>
+table        <div class="tbl"><table><thead><tr><th>..</th></tr></thead><tbody><tr [class="hl"]><td>..</td><td [class="focus"]>575.2<span class="pct">+8%</span></td></tr></tbody></table></div>
+note         <div class="note [red]"><b>Title:</b> text</div>
+cards        <div class="cards"><div class="card"><div class="k">label</div><b>DKK 500k</b><p>text</p></div></div>
+mix bar      <div class="mix" role="img" aria-label=".."><div style="width:68%;background:var(--navy)">A 68%</div><div style="width:32%;background:var(--pos)">B 32%</div></div><div class="mixlegend">..</div>
+risks        <div class="risk"><div class="hi"><span class="lvl">สูง</span><strong>title</strong>text</div><div><span class="lvl">กลาง</span>...</div></div>
+slides       <div class="shots [one]"><figure><button type="button" aria-label="ขยายภาพ X"><img src="<stem URL-encoded>_frames/email/HH-MM-SS.jpg" alt=".." loading="lazy"></button><figcaption><b>ภาพ 01</b>what · หน้า N · HH:MM:SS</figcaption></figure></div>
+actions      <div class="tbl"><table class="actions"> ... <td><span class="owner">Name</span></td><td>task</td><td><span class="due">date</span> or –</td></table></div>
+questions    <ol class="q"><li>..</li></ol>
+================================================================ -->
+
+<footer>{{SOURCE NOTE: e.g. ตัวเลขนำมาจากสไลด์ที่ฉายในที่ประชุม ส่วนประเด็นสรุปจากบันทึกเสียง · กดที่ภาพเพื่อขยาย (omit the image hint when there are no slides)}}</footer>
+</main>
+</div>
+
+<dialog id="lb" aria-label="ภาพสไลด์ขยาย">
+  <div class="frame"><img alt=""></div>
+  <div class="cap"><span></span><button type="button" data-close>ปิด</button></div>
+</dialog>
+
+<script>
+(() => {
+  const lb = document.getElementById('lb'), big = lb.querySelector('img'), cap = lb.querySelector('.cap span');
+  document.querySelectorAll('figure button').forEach(b => b.addEventListener('click', () => {
+    const img = b.querySelector('img');
+    big.src = img.src; big.alt = img.alt;
+    cap.textContent = b.parentElement.querySelector('figcaption').textContent;
+    lb.classList.remove('zoomed'); lb.showModal();
+  }));
+  big.addEventListener('click', () => lb.classList.toggle('zoomed'));
+  lb.querySelector('[data-close]').addEventListener('click', () => lb.close());
+  lb.addEventListener('click', e => { if (e.target === lb) lb.close(); });
+
+  const links = [...document.querySelectorAll('.toc a')];
+  const spy = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    links.forEach(a => a.setAttribute('aria-current', a.hash === '#' + e.target.id));
+    const cur = links.find(a => a.hash === '#' + e.target.id);
+    if (cur && innerWidth <= 980) {  // keep the active chip visible without moving the page
+      const ol = cur.closest('ol');
+      ol.scrollTo({left: cur.offsetLeft - ol.clientWidth / 2, behavior: 'smooth'});
+    }
+  }), {rootMargin: '-35% 0px -60% 0px'});
+  document.querySelectorAll('main section').forEach(s => spy.observe(s));
+})();
+</script>
+</body>
+</html>
