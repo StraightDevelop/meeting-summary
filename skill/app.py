@@ -15,7 +15,7 @@ import threading
 import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 from tkinter import font as tkfont
 
 HERE = Path(__file__).resolve().parent
@@ -47,6 +47,16 @@ def font(size: int, weight: str = "normal"):
 
 def claude_exe() -> str:
     return shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude.exe")
+
+
+def auth_status() -> dict:
+    """`claude auth status` as a dict ({} when Claude Code is missing or the call fails)."""
+    try:
+        out = subprocess.run([claude_exe(), "auth", "status"], capture_output=True, text=True, encoding="utf-8",
+                             timeout=60, creationflags=subprocess.CREATE_NO_WINDOW).stdout
+        return json.loads(out)
+    except Exception:
+        return {}
 
 
 def run(cmd, on_line, cwd=None) -> int:
@@ -190,9 +200,10 @@ class Steps(tk.Canvas):
 
 def link(parent, text, command) -> tk.Label:
     lbl = tk.Label(parent, text=text, font=font(9), bg=parent["bg"], fg=MUTED, cursor="hand2")
+    lbl.base = MUTED  # colour to return to after hover; callers may change it
     lbl.bind("<Button-1>", lambda e: command())
     lbl.bind("<Enter>", lambda e: lbl.configure(fg=INK))
-    lbl.bind("<Leave>", lambda e: lbl.configure(fg=MUTED))
+    lbl.bind("<Leave>", lambda e: lbl.configure(fg=lbl.base))
     return lbl
 
 
@@ -201,6 +212,7 @@ class App:
         global SCALE
         SCALE = root.winfo_fpixels("1i") / 96
         self.root, self.q, self.files, self.creeping = root, queue.Queue(), [], False
+        self.account, self.running = None, False  # account: None until the first status check returns
         root.title("สรุปประชุม")
         if (HERE / "icon.ico").exists():
             root.iconbitmap(default=str(HERE / "icon.ico"))
@@ -210,7 +222,15 @@ class App:
         page = tk.Frame(root, bg=BG)
         page.pack(fill="both", expand=True, padx=px(24), pady=(px(16), px(14)))
 
-        tk.Label(page, text="สรุปประชุม", font=font(18, "bold"), bg=BG, fg=INK).pack(anchor="w", pady=(0, px(10)))
+        head = tk.Frame(page, bg=BG)
+        head.pack(fill="x", pady=(0, px(10)))
+        tk.Label(head, text="สรุปประชุม", font=font(18, "bold"), bg=BG, fg=INK).pack(side="left")
+        acct = tk.Frame(head, bg=BG)
+        acct.pack(side="right")
+        self.who = tk.Label(acct, text="กำลังตรวจสอบบัญชี Claude…", font=font(9), bg=BG, fg=MUTED)
+        self.who.pack(anchor="e")
+        self.auth_link = link(acct, "", self.auth_action)
+        self.auth_link.pack(anchor="e")
 
         hero = Card(page, INK, radius=24, pad=22)
         hero.pack(fill="x")
@@ -252,8 +272,50 @@ class App:
                            relief="flat", bd=0, highlightthickness=0, state="disabled", wrap="word")
         self.log.pack(fill="both")
         root.after(100, self.pump)
+        self.refresh_auth()
 
     # --- UI-thread side ---------------------------------------------------------------------
+    # --- Claude account (login is stored in the user profile, so it survives restarts) -------
+    def refresh_auth(self):
+        threading.Thread(target=lambda: self.q.put(("auth", auth_status())), daemon=True).start()
+
+    def logged_in(self) -> bool:
+        return bool(self.account and self.account.get("loggedIn"))
+
+    def auth_action(self):
+        if self.running or self.account is None:
+            return
+        if self.logged_in():
+            if not messagebox.askyesno("ออกจากระบบ Claude",
+                                       "ออกจากระบบ Claude บนเครื่องนี้?\nครั้งถัดไปต้องเข้าสู่ระบบใหม่ก่อนสรุปประชุม"):
+                return
+            cmd, flags, wait = [claude_exe(), "auth", "logout"], subprocess.CREATE_NO_WINDOW, "กำลังออกจากระบบ…"
+        else:  # own console window: if the browser hand-off fails, Claude asks to paste a code there
+            cmd, flags, wait = [claude_exe(), "auth", "login"], subprocess.CREATE_NEW_CONSOLE, "เข้าสู่ระบบในเบราว์เซอร์ที่เปิดขึ้นมา…"
+        self.account = None
+        self.who.configure(text=wait, fg=MUTED)
+        self.auth_link.configure(text="")
+
+        def go():
+            try:
+                subprocess.run(cmd, creationflags=flags, timeout=900)
+            except Exception as e:
+                self.q.put(("log", f"claude auth: {e!r}"))
+            self.q.put(("auth", auth_status()))
+        threading.Thread(target=go, daemon=True).start()
+
+    def show_auth(self, status: dict):
+        self.account = status
+        if self.logged_in():
+            email = status.get("email") or "Claude"
+            self.who.configure(text="● " + (email if len(email) <= 28 else email[:26] + "…"), fg="#1E9E4A")
+            self.auth_link.base = MUTED
+            self.auth_link.configure(text="ออกจากระบบ", fg=MUTED, font=font(9))
+        else:
+            self.who.configure(text="ยังไม่ได้เข้าสู่ระบบ Claude", fg="#D93A3A")
+            self.auth_link.base = INK
+            self.auth_link.configure(text="เข้าสู่ระบบ →", fg=INK, font=font(10, "bold"))
+
     def toggle_log(self):
         if self.logcard.winfo_ismapped():
             self.logcard.pack_forget()
@@ -293,11 +355,13 @@ class App:
                 self.status.configure(text=val, fg=MUTED)
             elif kind == "step":
                 self.steps.set(*val)
+            elif kind == "auth":
+                self.show_auth(val)
             elif kind == "creep":
                 self.creeping = val
             elif kind == "end":
                 ok, msg, files = val
-                self.creeping = False
+                self.creeping = self.running = False
                 self.btn.set_enabled(True)
                 self.badge.set("ok" if ok else "fail")
                 self.status.configure(text=msg, fg=INK if ok else "#D93A3A")
@@ -309,17 +373,21 @@ class App:
                     self.reveal.pack(side="right")
                 else:
                     self.steps.set(failed=True)
+                    self.refresh_auth()  # a failed run is often an expired login
         if self.creeping:  # Claude gives no %; ease the bar toward 90% so it never looks stuck
             self.steps.set(frac=self.steps.frac + (0.9 - self.steps.frac) * 0.0004)
         self.root.after(100, self.pump)
 
     def pick(self):
+        if self.account is not None and not self.logged_in():
+            return self.auth_action()  # log in first instead of failing 20 minutes later
         f = filedialog.askopenfilename(title="เลือกไฟล์ประชุม", filetypes=[
             ("คลิปประชุม", "*.mp4 *.mov *.mkv *.webm *.mp3 *.m4a *.wav"), ("ทุกไฟล์", "*.*")])
         if f:
             self.start(Path(f))
 
     def start(self, media: Path):
+        self.running = True
         self.btn.set_enabled(False)
         self.results.pack_forget()
         self.status.pack(fill="x")
@@ -374,7 +442,7 @@ class App:
             files = [(media.with_name(media.stem + suffix), title, desc) for suffix, title, desc in OUTPUTS]
             files = [f for f in files if f[0].exists()]
             if result.get("is_error") or not files:
-                return say("end", (False, "Claude ทำงานไม่สำเร็จ ถ้าเพิ่งติดตั้ง ลองเปิด Install.bat อีกครั้งเพื่อ login Claude", None))
+                return say("end", (False, "Claude ทำงานไม่สำเร็จ ตรวจว่ามุมขวาบนเข้าสู่ระบบอยู่ แล้วลองใหม่อีกครั้ง", None))
             say("end", (True, "กดเลือกฉบับที่ต้องการ จะเปิดในเบราว์เซอร์", files))
         except Exception as e:  # show anything unexpected instead of dying silently (pythonw has no console)
             say("log", repr(e))
