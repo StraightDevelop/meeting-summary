@@ -18,6 +18,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox
 from tkinter import font as tkfont
 
+APP_VERSION = "1.0.0"  # bump with every release and add a line under "เวอร์ชัน" in README.md
 HERE = Path(__file__).resolve().parent
 PY = HERE / ".venv" / "Scripts" / "python.exe"
 PCT = re.compile(r"Transcribe .*?(\d+)%")
@@ -265,6 +266,7 @@ class App:
         self.foot.pack(fill="x", pady=(px(12), 0))
         self.toggle = link(self.foot, "ดูรายละเอียด ▾", self.toggle_log)
         self.toggle.pack(side="left")
+        tk.Label(self.foot, text=f"v{APP_VERSION}", font=font(9), bg=BG, fg=DIM).pack(side="right", padx=(px(12), 0))
         self.reveal = link(self.foot, "แสดงในโฟลเดอร์", lambda: subprocess.run(["explorer", f"/select,{self.files[0]}"]))
 
         self.logcard = Card(page, CARD, radius=16, pad=14)
