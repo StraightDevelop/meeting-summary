@@ -2,27 +2,44 @@
 
 Open it from the desktop shortcut, then pick a recording (or drop the file onto the shortcut).
 It runs transcribe.py + frames.py locally, then asks Claude Code (`claude -p`, the user's own
-login) to run the rest of SKILL.md, and finally opens the folder with the .eml selected.
+login) to run the rest of SKILL.md, and finally offers a button that opens the finished .eml.
 """
 import json
+import os
 import queue
 import re
 import shutil
 import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog
+from tkinter import font as tkfont
 
 HERE = Path(__file__).resolve().parent
 PY = HERE / ".venv" / "Scripts" / "python.exe"
-FONT = ("Leelawadee UI", 11)
 PCT = re.compile(r"Transcribe .*?(\d+)%")
 PROMPT = ("Use the meeting-summary skill on this recording: {path}\n"
           "Step 1 (transcript + slide frames) has already been run next to the file; continue from step 2. "
           "Nobody is available to answer questions, so run every remaining step to the end.")
 CLAUDE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "PowerShell"]
+
+# Monochrome palette: white page, light-grey cards, black hero; colour only in status badges.
+BG, CARD, INK, MUTED, TRACK, DIM = "#FFFFFF", "#F4F4F5", "#0A0A0A", "#8A8A8F", "#DCDCE0", "#A1A1A6"
+BADGES = {"idle": ("#EFEFF1", "#6B6B70", "รอไฟล์"), "run": ("#E8F0FE", "#3B7BEA", "กำลังทำงาน"),
+          "ok": ("#E7F6EC", "#1E9E4A", "เสร็จแล้ว"), "fail": ("#FDECEC", "#D93A3A", "ไม่สำเร็จ")}
+STEPS = ["ถอดเสียง", "เขียนสรุป", "อีเมลพร้อม"]
+SCALE = 1.0  # screen DPI / 96, set once the Tk root exists
+
+
+def px(n: float) -> int:
+    return int(n * SCALE)
+
+
+def font(size: int, weight: str = "normal"):
+    return ("Leelawadee UI", size, weight)  # ships with Windows, covers Thai + Latin
 
 
 def claude_exe() -> str:
@@ -51,25 +68,199 @@ def describe(event: dict):
     return None
 
 
+# --- drawn widgets (Tk has no rounded corners, so these paint on a Canvas) ---------------------
+def rrect(c: tk.Canvas, x1, y1, x2, y2, r, fill, tags=""):
+    """Filled rounded rectangle with true circular corners (r >= half the height gives a pill)."""
+    r = min(r, (x2 - x1) / 2, (y2 - y1) / 2)
+    kw = dict(fill=fill, outline=fill, tags=tags)
+    for x, y in ((x1, y1), (x2 - 2 * r, y1), (x1, y2 - 2 * r), (x2 - 2 * r, y2 - 2 * r)):
+        c.create_oval(x, y, x + 2 * r, y + 2 * r, **kw)
+    c.create_rectangle(x1 + r, y1, x2 - r, y2, **kw)
+    c.create_rectangle(x1, y1 + r, x2, y2 - r, **kw)
+
+
+class Card(tk.Frame):
+    """Rounded panel that grows to fit its children; put them in .body.
+
+    A plain Frame sizes itself from the body; the rounded shape is a Canvas placed behind it.
+    """
+
+    def __init__(self, parent, fill, radius=18, pad=18):
+        super().__init__(parent, bg=parent["bg"])
+        self.fill, self.r = fill, px(radius)
+        self.bg = tk.Canvas(self, bg=parent["bg"], highlightthickness=0, bd=0)
+        self.bg.place(x=0, y=0, relwidth=1, relheight=1)
+        self.bg.bind("<Configure>", self._draw)
+        self.body = tk.Frame(self, bg=fill)
+        self.body.pack(fill="both", expand=True, padx=px(pad), pady=px(pad))
+
+    def _draw(self, e):
+        self.bg.delete("all")
+        rrect(self.bg, 0, 0, e.width - 1, e.height - 1, self.r, self.fill)
+
+
+class Pill(tk.Canvas):
+    """Fully rounded button; `dim` = (fill, ink) used while disabled."""
+
+    def __init__(self, parent, text, command, fill, ink, dim, height=48, size=12):
+        super().__init__(parent, bg=parent["bg"], height=px(height), highlightthickness=0, bd=0, cursor="hand2")
+        self.text, self.command, self.colors, self.dim, self.size = text, command, (fill, ink), dim, size
+        self.enabled = True
+        self.bind("<Configure>", lambda e: self.draw())
+        self.bind("<Button-1>", lambda e: self.enabled and self.command())
+
+    def set_enabled(self, on: bool):
+        self.enabled = on
+        self.configure(cursor="hand2" if on else "arrow")
+        self.draw()
+
+    def draw(self):
+        self.delete("all")
+        w, h = self.winfo_width(), self.winfo_height()
+        fill, ink = self.colors if self.enabled else self.dim
+        rrect(self, 0, 0, w - 1, h - 1, h / 2, fill)
+        self.create_text(w / 2, h / 2, text=self.text, fill=ink, font=font(self.size, "bold"))
+
+
+class Badge(tk.Canvas):
+    def __init__(self, parent):
+        super().__init__(parent, bg=parent["bg"], highlightthickness=0, bd=0, height=px(30))
+        self.f = tkfont.Font(font=font(9, "bold"))
+        self.set("idle")
+
+    def set(self, kind: str):
+        fill, ink, text = BADGES[kind]
+        w, h = self.f.measure(text) + px(28), px(30)
+        self.configure(width=w)
+        self.delete("all")
+        rrect(self, 0, 0, w - 1, h - 1, h / 2, fill)
+        self.create_text(w / 2, h / 2, text=text, fill=ink, font=self.f)
+
+
+class Steps(tk.Canvas):
+    """Three-node tracker: finished nodes are black with a check, the active one a ring."""
+
+    def __init__(self, parent):
+        super().__init__(parent, bg=parent["bg"], highlightthickness=0, bd=0, height=px(78))
+        self.done, self.frac, self.failed, self.times = 0, 0.0, False, ["", "", ""]
+        self.bind("<Configure>", lambda e: self.draw())
+
+    def set(self, done=None, frac=None, failed=None):
+        if done is not None and done != self.done or not any(self.times):
+            stamp = time.strftime("%H:%M")
+            for i in range(min(done or 0, 2) + 1):
+                self.times[i] = self.times[i] or stamp
+        self.done = self.done if done is None else done
+        self.frac = self.frac if frac is None else frac
+        self.failed = self.failed if failed is None else failed
+        self.draw()
+
+    def reset(self):
+        self.done, self.frac, self.failed, self.times = 0, 0.0, False, ["", "", ""]
+        self.draw()
+
+    def draw(self):
+        self.delete("all")
+        w, r, y = self.winfo_width(), px(11), px(13)
+        xs = [r + 1, w / 2, w - r - 1]
+        self.create_line(xs[0], y, xs[2], y, fill=TRACK, width=px(4), capstyle="round")
+        end = xs[2] if self.done >= 2 else xs[self.done] + (xs[self.done + 1] - xs[self.done]) * self.frac
+        self.create_line(xs[0], y, end, y, fill=INK, width=px(4), capstyle="round")
+        for i, x in enumerate(xs):
+            if i < self.done:
+                self.create_oval(x - r, y - r, x + r, y + r, fill=INK, outline=INK)
+                self.create_line(x - px(5), y, x - px(1), y + px(4), x + px(5), y - px(4),
+                                 fill="white", width=max(2, px(2)), capstyle="round", joinstyle="round")
+            elif i == self.done and any(self.times):
+                ring = "#D93A3A" if self.failed else INK
+                self.create_oval(x - r, y - r, x + r, y + r, fill="white", outline=ring, width=px(3))
+                self.create_oval(x - px(4), y - px(4), x + px(4), y + px(4), fill=ring, outline=ring)
+            else:
+                self.create_oval(x - r, y - r, x + r, y + r, fill=TRACK, outline=TRACK)
+            anchor = ("w", "center", "e")[i]
+            lx = x - r if i == 0 else x + r if i == 2 else x
+            reached = i <= self.done and any(self.times)
+            self.create_text(lx, y + r + px(14), text=STEPS[i], anchor=anchor, font=font(10, "bold" if reached else "normal"),
+                             fill=INK if reached else MUTED)
+            self.create_text(lx, y + r + px(34), text=self.times[i], anchor=anchor, font=font(8), fill=MUTED)
+
+
+def link(parent, text, command) -> tk.Label:
+    lbl = tk.Label(parent, text=text, font=font(9), bg=parent["bg"], fg=MUTED, cursor="hand2")
+    lbl.bind("<Button-1>", lambda e: command())
+    lbl.bind("<Enter>", lambda e: lbl.configure(fg=INK))
+    lbl.bind("<Leave>", lambda e: lbl.configure(fg=MUTED))
+    return lbl
+
+
 class App:
     def __init__(self, root: tk.Tk):
-        self.root, self.q = root, queue.Queue()
+        global SCALE
+        SCALE = root.winfo_fpixels("1i") / 96
+        self.root, self.q, self.eml, self.creeping = root, queue.Queue(), None, False
         root.title("สรุปประชุม")
-        tk.Label(root, text="สรุปประชุมจากไฟล์คลิป", font=("Leelawadee UI", 16, "bold")).pack(pady=(16, 4))
-        tk.Label(root, text="เลือกไฟล์วิดีโอ/เสียงของการประชุม แล้วรอจนเสร็จ (คลิปยาวอาจใช้เวลาเป็นชั่วโมง)",
-                 font=FONT, wraplength="15c", justify="center").pack(padx=16)
-        self.btn = tk.Button(root, text="เลือกไฟล์ประชุม…", font=("Leelawadee UI", 13), padx=16, pady=6,
-                             command=self.pick)
-        self.btn.pack(pady=12)
-        self.status = tk.Label(root, text="", font=FONT)
-        self.status.pack()
-        self.bar = ttk.Progressbar(root, length="15c", maximum=100)
-        self.bar.pack(pady=6)
-        self.log = tk.Text(root, height=12, font=("Consolas", 9), state="disabled")
-        self.log.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        root.configure(bg=BG)
+        root.minsize(px(500), 0)
+        root.resizable(False, False)
+        page = tk.Frame(root, bg=BG)
+        page.pack(fill="both", expand=True, padx=px(24), pady=(px(22), px(18)))
+
+        tk.Label(page, text="สรุปประชุม", font=font(18, "bold"), bg=BG, fg=INK).pack(anchor="w")
+        tk.Label(page, text="ถอดเสียงคลิปประชุม แล้วเขียนอีเมลสรุปให้อัตโนมัติ", font=font(10),
+                 bg=BG, fg=MUTED).pack(anchor="w", pady=(0, px(16)))
+
+        hero = Card(page, INK, radius=24, pad=22)
+        hero.pack(fill="x")
+        h = hero.body
+        tk.Label(h, text="ไฟล์ประชุม", font=font(9), bg=INK, fg=DIM).pack(anchor="w")
+        self.file = tk.Label(h, text="ยังไม่ได้เลือกไฟล์", font=font(15, "bold"), bg=INK, fg="white",
+                             anchor="w", justify="left")
+        self.file.pack(fill="x", pady=(px(2), px(2)))
+        h.bind("<Configure>", lambda e: self.file.configure(wraplength=e.width), add="+")
+        tk.Label(h, text="วิดีโอหรือเสียง · คลิปยาวอาจใช้เวลาเป็นชั่วโมง", font=font(9), bg=INK, fg=DIM).pack(anchor="w")
+        self.btn = Pill(h, "เลือกไฟล์ประชุม", self.pick, fill="white", ink=INK, dim=("#2C2C2E", "#6B6B70"))
+        self.btn.pack(fill="x", pady=(px(18), 0))
+
+        prog = Card(page, CARD, radius=20, pad=20)
+        prog.pack(fill="x", pady=(px(14), 0))
+        p = prog.body
+        top = tk.Frame(p, bg=CARD)
+        top.pack(fill="x")
+        tk.Label(top, text="ความคืบหน้า", font=font(12, "bold"), bg=CARD, fg=INK).pack(side="left")
+        self.badge = Badge(top)
+        self.badge.pack(side="right")
+        self.steps = Steps(p)
+        self.steps.pack(fill="x", pady=(px(16), px(4)))
+        self.status = tk.Label(p, text="เลือกไฟล์เพื่อเริ่ม", font=font(10), bg=CARD, fg=MUTED,
+                               anchor="w", justify="left")
+        self.status.pack(fill="x")
+        p.bind("<Configure>", lambda e: self.status.configure(wraplength=e.width), add="+")
+
+        self.open = Pill(page, "เปิดอีเมล", self.open_eml, fill=INK, ink="white", dim=(TRACK, MUTED), height=54, size=13)
+        self.foot = tk.Frame(page, bg=BG)
+        self.foot.pack(fill="x", pady=(px(12), 0))
+        self.toggle = link(self.foot, "ดูรายละเอียด ▾", self.toggle_log)
+        self.toggle.pack(side="left")
+        self.reveal = link(self.foot, "แสดงในโฟลเดอร์", lambda: subprocess.run(["explorer", f"/select,{self.eml}"]))
+
+        self.logcard = Card(page, CARD, radius=16, pad=14)
+        self.log = tk.Text(self.logcard.body, width=1, height=8, font=("Consolas", 9), bg=CARD, fg="#4A4A4F",
+                           relief="flat", bd=0, highlightthickness=0, state="disabled", wrap="word")
+        self.log.pack(fill="both")
         root.after(100, self.pump)
 
     # --- UI-thread side ---------------------------------------------------------------------
+    def toggle_log(self):
+        if self.logcard.winfo_ismapped():
+            self.logcard.pack_forget()
+            self.toggle.configure(text="ดูรายละเอียด ▾")
+        else:
+            self.logcard.pack(fill="x", pady=(px(10), 0))
+            self.toggle.configure(text="ซ่อนรายละเอียด ▴")
+
+    def open_eml(self):
+        os.startfile(self.eml)  # opens in Outlook (or the default mail app)
+
     def pump(self):
         while not self.q.empty():
             kind, val = self.q.get()
@@ -79,17 +270,26 @@ class App:
                 self.log.see("end")
                 self.log.configure(state="disabled")
             elif kind == "status":
-                self.status.configure(text=val)
-            elif kind == "pct":
-                self.bar.configure(mode="determinate", value=val)
-            elif kind == "busy":
-                self.bar.configure(mode="indeterminate")
-                self.bar.start(15)
+                self.status.configure(text=val, fg=MUTED)
+            elif kind == "step":
+                self.steps.set(*val)
+            elif kind == "creep":
+                self.creeping = val
             elif kind == "end":
-                self.bar.stop()
-                self.btn.configure(state="normal")
-                ok, msg = val
-                (messagebox.showinfo if ok else messagebox.showerror)("สรุปประชุม", msg)
+                ok, msg, eml = val
+                self.creeping = False
+                self.btn.set_enabled(True)
+                self.badge.set("ok" if ok else "fail")
+                self.status.configure(text=msg, fg=INK if ok else "#D93A3A")
+                if ok:
+                    self.eml = eml
+                    self.steps.set(3, 0)
+                    self.open.pack(fill="x", pady=(px(16), 0), before=self.foot)
+                    self.reveal.pack(side="right")
+                else:
+                    self.steps.set(failed=True)
+        if self.creeping:  # Claude gives no %; ease the bar toward 90% so it never looks stuck
+            self.steps.set(frac=self.steps.frac + (0.9 - self.steps.frac) * 0.0004)
         self.root.after(100, self.pump)
 
     def pick(self):
@@ -99,8 +299,13 @@ class App:
             self.start(Path(f))
 
     def start(self, media: Path):
-        self.btn.configure(state="disabled")
-        self.bar.configure(value=0)
+        self.btn.set_enabled(False)
+        self.open.pack_forget()
+        self.reveal.pack_forget()
+        self.file.configure(text=media.name)
+        self.badge.set("run")
+        self.steps.reset()
+        self.steps.set(0, 0)
         threading.Thread(target=self.work, args=(media,), daemon=True).start()
 
     # --- worker-thread side -----------------------------------------------------------------
@@ -108,13 +313,13 @@ class App:
         say = lambda kind, val=None: self.q.put((kind, val))
         try:
             say("log", f"ไฟล์: {media}")
-            say("status", "ขั้นที่ 1/2 · ถอดเสียงและเก็บภาพสไลด์…")
+            say("status", "กำลังถอดเสียงและเก็บภาพสไลด์ในเครื่องนี้…")
 
             def on_transcribe(line):
                 say("log", line)
                 m = PCT.search(line)
                 if m:
-                    say("pct", int(m.group(1)))
+                    say("step", (0, int(m.group(1)) / 100))
 
             frames = threading.Thread(target=run, args=([str(PY), str(HERE / "frames.py"), str(media)],
                                                         lambda l: say("log", l)))
@@ -122,10 +327,11 @@ class App:
             code = run([str(PY), str(HERE / "transcribe.py"), str(media)], on_transcribe)
             frames.join()
             if code:
-                return say("end", (False, "ถอดเสียงไม่สำเร็จ ดูรายละเอียดในกล่องข้อความ"))
+                return say("end", (False, "ถอดเสียงไม่สำเร็จ กด “ดูรายละเอียด” เพื่อดูสาเหตุ", None))
 
-            say("status", "ขั้นที่ 2/2 · Claude กำลังเขียนสรุปและอีเมล (ประมาณ 5–15 นาที)…")
-            say("busy")
+            say("step", (1, 0))
+            say("creep", True)
+            say("status", "Claude กำลังเขียนสรุปและอีเมล ประมาณ 5–15 นาที")
             result = {}
 
             def on_claude(line):
@@ -144,14 +350,11 @@ class App:
                 on_claude, cwd=str(media.parent))
             eml = media.with_name(f"{media.stem}_executive.eml")
             if result.get("is_error") or not eml.exists():
-                return say("end", (False, "Claude ทำงานไม่สำเร็จ ถ้าเพิ่งติดตั้ง ลองเปิด Install.bat อีกครั้งเพื่อ login Claude"))
-            subprocess.run(["explorer", f"/select,{eml}"])
-            say("pct", 100)
-            say("status", "เสร็จแล้ว")
-            say("end", (True, f"เสร็จแล้ว\n\nดับเบิลคลิกไฟล์ {eml.name} เพื่อเปิดอีเมล → ใส่ผู้รับ → ส่ง"))
+                return say("end", (False, "Claude ทำงานไม่สำเร็จ ถ้าเพิ่งติดตั้ง ลองเปิด Install.bat อีกครั้งเพื่อ login Claude", None))
+            say("end", (True, "กด “เปิดอีเมล” แล้วใส่ผู้รับ → ส่ง", eml))
         except Exception as e:  # show anything unexpected instead of dying silently (pythonw has no console)
             say("log", repr(e))
-            say("end", (False, f"เกิดข้อผิดพลาด: {e}"))
+            say("end", (False, f"เกิดข้อผิดพลาด: {e}", None))
 
 
 if __name__ == "__main__":
