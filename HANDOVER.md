@@ -1,7 +1,7 @@
 # Handover — 2026-10-15 (afternoon)
 
 Branch `main`. Repo: https://github.com/StraightDevelop/meeting-summary (public)
-Pushed: `f6a7ef1` tag `v1.1.0`. Local, NOT pushed yet: v1.1.1 commit (waits on model upload below).
+Pushed through tag `v1.1.1`. OpenVINO models are on releases `whisper-ov-v1` and `typhoon-ov-v1`.
 
 ## Done
 - **Boss's error fixed (v1.1.0, pushed):** on CPU, faster-whisper `batch_size=8` overflowed ctranslate2's OpenMP
@@ -17,11 +17,10 @@ Pushed: `f6a7ef1` tag `v1.1.0`. Local, NOT pushed yet: v1.1.1 commit (waits on m
   Driver used: scratchpad `drv/drive.py` (not in repo).
 
 ## Next steps
-1. `gh auth login`, then create releases `whisper-ov-v1` and `typhoon-ov-v1` and upload the 14 files of
-   `~/.claude/skills/meeting-summary/models/<name>-ov/` each (file list = `$OvFiles` in install.ps1).
-2. Push main, `git tag v1.1.1`, push the tag; push jump-setup (app.py synced, not committed).
-3. Clean-machine install test in Windows Sandbox (needs admin: enable `Containers-DisposableClientVM`, reboot).
-4. Ask the boss to re-download the ZIP and run Install.bat; get a screenshot if anything is red.
+1. Watch the `install-test` GitHub Actions run (clean Windows 2022/2025 VMs: real install.ps1 -NoLogin,
+   CPU transcription of a TTS clip, frames, re-install). Fix anything red.
+2. Ask the boss to re-download the ZIP and run Install.bat; get a screenshot if anything is red.
+3. Not covered by CI: Claude login + summary step on a clean machine, Intel GPU path on another laptop.
 
 ## First action to resume
-Check `gh auth status`; if logged in, do step 1.
+`gh run list -R StraightDevelop/meeting-summary` (gh is not logged in; GH_TOKEN from `git credential fill` works).

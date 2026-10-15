@@ -1,5 +1,5 @@
 ﻿# One-click setup for the meeting-summary skill (Windows). Safe to re-run: finished parts are skipped.
-param([string]$Dest = "$env:USERPROFILE\.claude\skills\meeting-summary")
+param([string]$Dest = "$env:USERPROFILE\.claude\skills\meeting-summary", [switch]$NoLogin)  # -NoLogin: CI, nobody to click
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -62,7 +62,7 @@ try {
     if (-not (Have claude)) { Invoke-RestMethod https://claude.ai/install.ps1 | Invoke-Expression }
     $loggedIn = $false
     try { $loggedIn = ((claude auth status) -join "`n" | ConvertFrom-Json).loggedIn } catch {}
-    if (-not $loggedIn) {
+    if (-not $loggedIn -and -not $NoLogin) {
         Write-Host '  เบราว์เซอร์จะเปิดหน้า login ของ Claude ให้ login ด้วยบัญชี Claude ของคุณ แล้วกลับมาที่หน้าต่างนี้' -ForegroundColor Yellow
         claude auth login; Check 'claude login'
     }
@@ -81,4 +81,5 @@ try {
 catch {
     Write-Host "`nติดตั้งไม่สำเร็จ: $_" -ForegroundColor Red
     Write-Host 'ลองเปิด Install.bat ใหม่อีกครั้ง (ส่วนที่เสร็จแล้วจะถูกข้าม) ถ้ายังไม่ได้ ให้ถ่ายรูปหน้าจอนี้ส่งให้ผู้ดูแล'
+    exit 1
 }

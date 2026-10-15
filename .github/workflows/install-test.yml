@@ -1,0 +1,77 @@
+# Clean-machine test: a fresh Windows VM (no GPU, no Python, no models) runs the real installer,
+# then transcribes a synthetic clip on CPU — the path every laptop without NVIDIA takes.
+# Claude login needs a human, so it is skipped (-NoLogin) and the Claude summary step is not run.
+name: install-test
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+    branches: [main]
+    paths: ["install.ps1", "skill/**", ".github/workflows/install-test.yml"]
+
+jobs:
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh  # reads the Thai paths in these steps; the installer itself still runs on 5.1 like Install.bat
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install (same script Install.bat runs)
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -NoLogin
+
+      - name: Check install result
+        run: |
+          $d = "$env:USERPROFILE\.claude\skills\meeting-summary"
+          foreach ($p in "$d\.venv\Scripts\pythonw.exe", "$d\app.py", "$d\models\typhoon-whisper-turbo\model.bin",
+                         "$d\models\whisper-large-v3-turbo\model.bin",
+                         (Join-Path ([Environment]::GetFolderPath('Desktop')) 'สรุปประชุม.lnk')) {
+            if (-not (Test-Path $p)) { throw "missing: $p" }
+          }
+          & "$env:USERPROFILE\.local\bin\claude.exe" --version; if ($LASTEXITCODE) { throw 'claude not installed' }
+
+      - name: Self-tests
+        run: |
+          $d = "$env:USERPROFILE\.claude\skills\meeting-summary"
+          & "$d\.venv\Scripts\python.exe" "$d\transcribe.py" --selftest; if ($LASTEXITCODE) { throw 'transcribe selftest' }
+          & "$d\.venv\Scripts\python.exe" "$d\app.py" --selftest; if ($LASTEXITCODE) { throw 'app selftest' }
+
+      - name: Make a ~3 min test clip (TTS speech, plus a video copy) in a Thai-named folder
+        run: |
+          Add-Type -AssemblyName System.Speech
+          $dir = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\ประชุม ทดสอบ"
+          $tts = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $tts.SetOutputToWaveFile("$dir\meeting.wav")
+          $line = 'Revenue this quarter is three point four million baht. Cost grew five percent. The team agreed to review project one next week and report the numbers to the board. '
+          $tts.Speak(($line * 14))
+          $tts.Dispose()
+          $ff = "$env:USERPROFILE\.claude\skills\meeting-summary\.venv\Scripts\static_ffmpeg.exe"
+          & $ff -v error -y -f lavfi -i testsrc=size=1280x720:rate=5 -i "$dir\meeting.wav" -shortest -c:v libx264 -c:a aac "$dir\meeting.mp4"
+          & $ff -v error -y -i "$dir\meeting.wav" -c:a aac "$dir\meeting.m4a"
+          Get-ChildItem $dir
+
+      - name: Transcribe on CPU (auto language, then forced Thai -> Typhoon)
+        run: |
+          $d = "$env:USERPROFILE\.claude\skills\meeting-summary"; $py = "$d\.venv\Scripts\python.exe"
+          $clip = "$env:RUNNER_TEMP\ประชุม ทดสอบ\meeting.m4a"
+          & $py "$d\transcribe.py" $clip; if ($LASTEXITCODE) { throw "transcribe auto exit $LASTEXITCODE" }
+          & $py "$d\transcribe.py" $clip --lang th --force --cpu; if ($LASTEXITCODE) { throw "transcribe th exit $LASTEXITCODE" }
+          $t = Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\ประชุม ทดสอบ\meeting_transcript.txt"
+          $t
+          if (($t -split "`n" | Where-Object { $_ -like '`[*' }).Count -lt 3) { throw 'transcript too short' }
+
+      - name: Slide capture (video + audio-only)
+        run: |
+          $d = "$env:USERPROFILE\.claude\skills\meeting-summary"; $py = "$d\.venv\Scripts\python.exe"
+          & $py "$d\frames.py" "$env:RUNNER_TEMP\ประชุม ทดสอบ\meeting.mp4"; if ($LASTEXITCODE) { throw "frames mp4 exit $LASTEXITCODE" }
+          & $py "$d\frames.py" "$env:RUNNER_TEMP\ประชุม ทดสอบ\meeting.wav"; if ($LASTEXITCODE) { throw "frames wav exit $LASTEXITCODE" }
+
+      - name: Re-run installer (must be idempotent and fast)
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -NoLogin
