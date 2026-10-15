@@ -55,16 +55,15 @@ class App:
     def __init__(self, root: tk.Tk):
         self.root, self.q = root, queue.Queue()
         root.title("สรุปประชุม")
-        root.geometry("640x460")
         tk.Label(root, text="สรุปประชุมจากไฟล์คลิป", font=("Leelawadee UI", 16, "bold")).pack(pady=(16, 4))
         tk.Label(root, text="เลือกไฟล์วิดีโอ/เสียงของการประชุม แล้วรอจนเสร็จ (คลิปยาวอาจใช้เวลาเป็นชั่วโมง)",
-                 font=FONT).pack()
+                 font=FONT, wraplength="15c", justify="center").pack(padx=16)
         self.btn = tk.Button(root, text="เลือกไฟล์ประชุม…", font=("Leelawadee UI", 13), padx=16, pady=6,
                              command=self.pick)
         self.btn.pack(pady=12)
         self.status = tk.Label(root, text="", font=FONT)
         self.status.pack()
-        self.bar = ttk.Progressbar(root, length=560, maximum=100)
+        self.bar = ttk.Progressbar(root, length="15c", maximum=100)
         self.bar.pack(pady=6)
         self.log = tk.Text(root, height=12, font=("Consolas", 9), state="disabled")
         self.log.pack(fill="both", expand=True, padx=12, pady=(0, 12))
@@ -156,6 +155,11 @@ class App:
 
 
 if __name__ == "__main__":
+    try:  # crisp text on scaled (125%/150%) laptop screens instead of bitmap-stretched blur
+        import ctypes
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        pass
     root = tk.Tk()
     app = App(root)
     if len(sys.argv) > 1 and Path(sys.argv[1]).is_file():  # file dropped onto the desktop shortcut
