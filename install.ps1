@@ -68,13 +68,16 @@ try {
     }
 
     Step 6 'สร้างไอคอน "สรุปประชุม" บน Desktop'
-    $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut(
-        (Join-Path ([Environment]::GetFolderPath('Desktop')) 'สรุปประชุม.lnk'))
+    # WScript.Shell saves through the ANSI codepage: a Thai file name fails on English-locale Windows.
+    # Save under an ASCII name, then rename (Unicode-safe).
+    $desktop = [Environment]::GetFolderPath('Desktop')
+    $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $desktop 'meeting-summary.lnk'))
     $lnk.TargetPath = "$Dest\.venv\Scripts\pythonw.exe"
     $lnk.Arguments = "`"$Dest\app.py`""
     $lnk.WorkingDirectory = $Dest
     $lnk.IconLocation = "$Dest\icon.ico,0"
     $lnk.Save()
+    Move-Item -Force (Join-Path $desktop 'meeting-summary.lnk') (Join-Path $desktop 'สรุปประชุม.lnk')
 
     Write-Host "`nติดตั้งเสร็จแล้ว ดับเบิลคลิกไอคอน 'สรุปประชุม' บน Desktop เพื่อเริ่มใช้งาน" -ForegroundColor Green
 }
