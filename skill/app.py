@@ -2,7 +2,7 @@
 
 Open it from the desktop shortcut, then pick a recording (or drop the file onto the shortcut).
 It runs transcribe.py + frames.py locally, then asks Claude Code (`claude -p`, the user's own
-login) to run the rest of SKILL.md, and finally offers a button that opens the finished .eml.
+login) to run the rest of SKILL.md, and finally lists the three HTML summaries to open in the browser.
 """
 import json
 import os
@@ -30,7 +30,10 @@ CLAUDE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "PowerShell"]
 BG, CARD, INK, MUTED, TRACK, DIM = "#FFFFFF", "#F4F4F5", "#0A0A0A", "#8A8A8F", "#DCDCE0", "#A1A1A6"
 BADGES = {"idle": ("#EFEFF1", "#6B6B70", "รอไฟล์"), "run": ("#E8F0FE", "#3B7BEA", "กำลังทำงาน"),
           "ok": ("#E7F6EC", "#1E9E4A", "เสร็จแล้ว"), "fail": ("#FDECEC", "#D93A3A", "ไม่สำเร็จ")}
-STEPS = ["ถอดเสียง", "เขียนสรุป", "อีเมลพร้อม"]
+STEPS = ["ถอดเสียง", "เขียนสรุป", "สรุปพร้อม"]
+OUTPUTS = [("_executive.html", "สรุปผู้บริหาร", "อ่านจบใน 3 นาที ตัวเลขสำคัญครบ"),
+           ("_detailed.html", "รายงานฉบับเต็ม", "ทุกหัวข้อ พร้อมภาพสไลด์จากคลิป"),
+           ("_plain.html", "ฉบับข้อความล้วน", "ไม่มีดีไซน์ ก๊อปไปวางใน Word หรืออีเมลได้ทันที")]
 SCALE = 1.0  # screen DPI / 96, set once the Tk root exists
 
 
@@ -141,7 +144,7 @@ class Steps(tk.Canvas):
     """Three-node tracker: finished nodes are black with a check, the active one a ring."""
 
     def __init__(self, parent):
-        super().__init__(parent, bg=parent["bg"], highlightthickness=0, bd=0, height=px(78))
+        super().__init__(parent, bg=parent["bg"], highlightthickness=0, bd=0, height=px(70))
         self.done, self.frac, self.failed, self.times = 0, 0.0, False, ["", "", ""]
         self.bind("<Configure>", lambda e: self.draw())
 
@@ -182,7 +185,7 @@ class Steps(tk.Canvas):
             reached = i <= self.done and any(self.times)
             self.create_text(lx, y + r + px(14), text=STEPS[i], anchor=anchor, font=font(10, "bold" if reached else "normal"),
                              fill=INK if reached else MUTED)
-            self.create_text(lx, y + r + px(34), text=self.times[i], anchor=anchor, font=font(8), fill=MUTED)
+            self.create_text(lx, y + r + px(31), text=self.times[i], anchor=anchor, font=font(8), fill=MUTED)
 
 
 def link(parent, text, command) -> tk.Label:
@@ -197,32 +200,33 @@ class App:
     def __init__(self, root: tk.Tk):
         global SCALE
         SCALE = root.winfo_fpixels("1i") / 96
-        self.root, self.q, self.eml, self.creeping = root, queue.Queue(), None, False
+        self.root, self.q, self.files, self.creeping = root, queue.Queue(), [], False
         root.title("สรุปประชุม")
+        if (HERE / "icon.ico").exists():
+            root.iconbitmap(default=str(HERE / "icon.ico"))
         root.configure(bg=BG)
         root.minsize(px(500), 0)
         root.resizable(False, False)
         page = tk.Frame(root, bg=BG)
-        page.pack(fill="both", expand=True, padx=px(24), pady=(px(22), px(18)))
+        page.pack(fill="both", expand=True, padx=px(24), pady=(px(16), px(14)))
 
-        tk.Label(page, text="สรุปประชุม", font=font(18, "bold"), bg=BG, fg=INK).pack(anchor="w")
-        tk.Label(page, text="ถอดเสียงคลิปประชุม แล้วเขียนอีเมลสรุปให้อัตโนมัติ", font=font(10),
-                 bg=BG, fg=MUTED).pack(anchor="w", pady=(0, px(16)))
+        tk.Label(page, text="สรุปประชุม", font=font(18, "bold"), bg=BG, fg=INK).pack(anchor="w", pady=(0, px(10)))
 
         hero = Card(page, INK, radius=24, pad=22)
         hero.pack(fill="x")
         h = hero.body
-        tk.Label(h, text="ไฟล์ประชุม", font=font(9), bg=INK, fg=DIM).pack(anchor="w")
+        tk.Label(h, text="ไฟล์ประชุม · ได้สรุป 3 ฉบับเปิดในเบราว์เซอร์", font=font(9), bg=INK, fg=DIM).pack(anchor="w")
         self.file = tk.Label(h, text="ยังไม่ได้เลือกไฟล์", font=font(15, "bold"), bg=INK, fg="white",
                              anchor="w", justify="left")
         self.file.pack(fill="x", pady=(px(2), px(2)))
         h.bind("<Configure>", lambda e: self.file.configure(wraplength=e.width), add="+")
-        tk.Label(h, text="วิดีโอหรือเสียง · คลิปยาวอาจใช้เวลาเป็นชั่วโมง", font=font(9), bg=INK, fg=DIM).pack(anchor="w")
+        self.hint = tk.Label(h, text="วิดีโอหรือเสียง · คลิปยาวอาจใช้เวลาเป็นชั่วโมง", font=font(9), bg=INK, fg=DIM)
+        self.hint.pack(anchor="w")
         self.btn = Pill(h, "เลือกไฟล์ประชุม", self.pick, fill="white", ink=INK, dim=("#2C2C2E", "#6B6B70"))
         self.btn.pack(fill="x", pady=(px(18), 0))
 
         prog = Card(page, CARD, radius=20, pad=20)
-        prog.pack(fill="x", pady=(px(14), 0))
+        prog.pack(fill="x", pady=(px(12), 0))
         p = prog.body
         top = tk.Frame(p, bg=CARD)
         top.pack(fill="x")
@@ -236,12 +240,12 @@ class App:
         self.status.pack(fill="x")
         p.bind("<Configure>", lambda e: self.status.configure(wraplength=e.width), add="+")
 
-        self.open = Pill(page, "เปิดอีเมล", self.open_eml, fill=INK, ink="white", dim=(TRACK, MUTED), height=54, size=13)
+        self.results = Card(page, CARD, radius=20, pad=5)  # filled with one row per summary when done
         self.foot = tk.Frame(page, bg=BG)
         self.foot.pack(fill="x", pady=(px(12), 0))
         self.toggle = link(self.foot, "ดูรายละเอียด ▾", self.toggle_log)
         self.toggle.pack(side="left")
-        self.reveal = link(self.foot, "แสดงในโฟลเดอร์", lambda: subprocess.run(["explorer", f"/select,{self.eml}"]))
+        self.reveal = link(self.foot, "แสดงในโฟลเดอร์", lambda: subprocess.run(["explorer", f"/select,{self.files[0]}"]))
 
         self.logcard = Card(page, CARD, radius=16, pad=14)
         self.log = tk.Text(self.logcard.body, width=1, height=8, font=("Consolas", 9), bg=CARD, fg="#4A4A4F",
@@ -258,8 +262,24 @@ class App:
             self.logcard.pack(fill="x", pady=(px(10), 0))
             self.toggle.configure(text="ซ่อนรายละเอียด ▴")
 
-    def open_eml(self):
-        os.startfile(self.eml)  # opens in Outlook (or the default mail app)
+    def show_results(self, files):
+        for w in self.results.body.winfo_children():
+            w.destroy()
+        for i, (path, title, desc) in enumerate(files):
+            row = tk.Frame(self.results.body, bg=CARD, cursor="hand2")
+            row.pack(fill="x", padx=px(12), pady=px(7))
+            if i:
+                tk.Frame(self.results.body, bg=TRACK, height=1).pack(fill="x", padx=px(12), before=row)
+            go = Pill(row, "→", lambda p=path: os.startfile(p), fill=INK, ink="white", dim=(INK, "white"), height=34, size=11)
+            go.configure(width=px(34))
+            go.pack(side="right")
+            text = tk.Frame(row, bg=CARD)
+            text.pack(side="left", fill="x", expand=True)
+            tk.Label(text, text=title, font=font(11, "bold"), bg=CARD, fg=INK, anchor="w").pack(fill="x")
+            tk.Label(text, text=desc, font=font(9), bg=CARD, fg=MUTED, anchor="w").pack(fill="x")
+            for w in (row, text, *text.winfo_children()):  # whole row is the click target
+                w.bind("<Button-1>", lambda e, p=path: os.startfile(p))  # opens in the default browser
+        self.results.pack(fill="x", pady=(px(12), 0), before=self.foot)
 
     def pump(self):
         while not self.q.empty():
@@ -276,15 +296,16 @@ class App:
             elif kind == "creep":
                 self.creeping = val
             elif kind == "end":
-                ok, msg, eml = val
+                ok, msg, files = val
                 self.creeping = False
                 self.btn.set_enabled(True)
                 self.badge.set("ok" if ok else "fail")
                 self.status.configure(text=msg, fg=INK if ok else "#D93A3A")
                 if ok:
-                    self.eml = eml
+                    self.files = [f for f, _, _ in files]
                     self.steps.set(3, 0)
-                    self.open.pack(fill="x", pady=(px(16), 0), before=self.foot)
+                    self.status.pack_forget()
+                    self.show_results(files)
                     self.reveal.pack(side="right")
                 else:
                     self.steps.set(failed=True)
@@ -300,9 +321,11 @@ class App:
 
     def start(self, media: Path):
         self.btn.set_enabled(False)
-        self.open.pack_forget()
+        self.results.pack_forget()
+        self.status.pack(fill="x")
         self.reveal.pack_forget()
         self.file.configure(text=media.name)
+        self.hint.pack_forget()  # keep the window short enough for a 1080p laptop at 150%
         self.badge.set("run")
         self.steps.reset()
         self.steps.set(0, 0)
@@ -348,10 +371,11 @@ class App:
             run([claude_exe(), "-p", PROMPT.format(path=media), "--output-format", "stream-json", "--verbose",
                  "--permission-mode", "acceptEdits", "--allowedTools", *CLAUDE_TOOLS],
                 on_claude, cwd=str(media.parent))
-            eml = media.with_name(f"{media.stem}_executive.eml")
-            if result.get("is_error") or not eml.exists():
+            files = [(media.with_name(media.stem + suffix), title, desc) for suffix, title, desc in OUTPUTS]
+            files = [f for f in files if f[0].exists()]
+            if result.get("is_error") or not files:
                 return say("end", (False, "Claude ทำงานไม่สำเร็จ ถ้าเพิ่งติดตั้ง ลองเปิด Install.bat อีกครั้งเพื่อ login Claude", None))
-            say("end", (True, "กด “เปิดอีเมล” แล้วใส่ผู้รับ → ส่ง", eml))
+            say("end", (True, "กดเลือกฉบับที่ต้องการ จะเปิดในเบราว์เซอร์", files))
         except Exception as e:  # show anything unexpected instead of dying silently (pythonw has no console)
             say("log", repr(e))
             say("end", (False, f"เกิดข้อผิดพลาด: {e}", None))
@@ -361,6 +385,7 @@ if __name__ == "__main__":
     try:  # crisp text on scaled (125%/150%) laptop screens instead of bitmap-stretched blur
         import ctypes
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("meeting-summary")  # taskbar shows our icon, not Python's
     except Exception:
         pass
     root = tk.Tk()

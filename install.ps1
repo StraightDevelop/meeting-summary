@@ -57,6 +57,7 @@ try {
     $lnk.TargetPath = "$Dest\.venv\Scripts\pythonw.exe"
     $lnk.Arguments = "`"$Dest\app.py`""
     $lnk.WorkingDirectory = $Dest
+    $lnk.IconLocation = "$Dest\icon.ico,0"
     $lnk.Save()
 
     Write-Host "`nติดตั้งเสร็จแล้ว ดับเบิลคลิกไอคอน 'สรุปประชุม' บน Desktop เพื่อเริ่มใช้งาน" -ForegroundColor Green
