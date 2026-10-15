@@ -1,4 +1,4 @@
-# Handover — 2026-10-14
+# Handover — 2026-10-15
 
 Branch `main` · last pushed commit `1ea06eb` (installer + window app). Repo: https://github.com/StraightDevelop/meeting-summary (public)
 
@@ -12,17 +12,16 @@ Boss (Windows, non-technical) downloads ZIP → double-clicks `Install.bat` → 
 - Verified on this machine: installer end to end (models already present), fresh venv from requirements.txt (`--selftest` + imports OK), app flow on a test clip → `_executive.eml` + 3 HTMLs produced, success dialog reached.
   (Harness print crashed on `→` in cp874 console — harness only, not the app.)
 
+- 2026-10-15: window checked by screenshot; fixed clipped subtitle + DPI blur. Email now `เรียน ทุกท่าน`, no sign-off (boss sends to team/board; Outlook signature closes it). jump-setup copy synced (`7286b24`).
+
 ## Not verified yet
 - Clean-machine install: real model downloads, winget Git, Claude Code install + browser login, SmartScreen prompts.
-- GUI look (Thai font Leelawadee UI, layout) — not seen visually. A shortcut "สรุปประชุม" now exists on this desktop.
 - CPU-only speed on the boss's laptop (no Intel OV models shipped → CPU fallback unless NVIDIA).
 
 ## Next steps
-1. Double-click the "สรุปประชุม" desktop icon here and check the window by eye.
-2. Test on a clean Windows machine/VM or a second user account: download ZIP → Install.bat → run a short clip.
-3. Decide: SKILL.md greeting `เรียน [ชื่อหัวหน้า]` / sign-off are written for forwarding to the boss — adjust if the boss is the sender.
-4. Optional: shortcut icon; ship `*-ov` models for Intel GPU speed (3.2 GB more).
-5. jump-setup's `skills/meeting-summary` copy lacks `app.py` — sync it or point it at this repo.
+1. Test on a clean Windows machine/VM or a second user account: download ZIP → Install.bat → run a short clip.
+2. Send the boss the ZIP link: https://github.com/StraightDevelop/meeting-summary/archive/refs/heads/main.zip
+3. Optional: shortcut icon; ship `*-ov` models for Intel GPU speed (3.2 GB more).
 
 ## First action to resume
-Double-click "สรุปประชุม" on the desktop and pick `~/meeting-summary-test/English roadmap test.mp3`.
+Create a second Windows user (or VM), download the ZIP there, run Install.bat.

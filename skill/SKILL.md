@@ -55,7 +55,7 @@ Thai unless the user asks otherwise; keep business terms in English. First decid
 Always end the detailed report with **Action items** (owner chips, due dates; unknown → `–`) and **Open questions**; include **Risks** whenever any were raised. Every number in KPI cards/bars must come from a slide or a clearly heard statement.
 
 ### 3a. `<stem>_executive.html` — the email body, readable in under 3 minutes
-**Copy `email_template.html`** and fill it. Outlook-safe (inline styles + tables only — Outlook strips modern CSS). Title prefix `[Executive Summary]`, max 720px, ~one screen, greeting `เรียน [ชื่อหัวหน้า]` + sign-off `[ชื่อคุณ]`:
+**Copy `email_template.html`** and fill it. Outlook-safe (inline styles + tables only — Outlook strips modern CSS). Title prefix `[Executive Summary]`, max 720px, ~one screen, greeting `เรียน ทุกท่าน`, no sign-off (the sender's Outlook signature closes it):
 1. **Bottom line** box: verdict/decision/status + the one number or fact that matters, 2–3 lines
 2. **Key facts table**, 4–6 rows — numbers with growth (red when worse) or, for non-numeric meetings, หัวข้อ | สถานะ
 3. **3 ประเด็นที่ควรทราบ** — bold headline + 2–3 short sub-bullets each
