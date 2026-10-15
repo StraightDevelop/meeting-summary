@@ -18,10 +18,14 @@ from pathlib import Path
 from tkinter import filedialog, messagebox
 from tkinter import font as tkfont
 
-APP_VERSION = "1.0.0"  # bump with every release and add a line under "เวอร์ชัน" in README.md
+APP_VERSION = "1.1.0"  # bump with every release and add a line under "เวอร์ชัน" in README.md
 HERE = Path(__file__).resolve().parent
 PY = HERE / ".venv" / "Scripts" / "python.exe"
-PCT = re.compile(r"Transcribe .*?(\d+)%")
+# transcribe.py progress: "[2/4] Detect language ..." and "[4/4] Transcribe ███░ 58%  01:45:12 / 03:01:07  elapsed .. ETA ~00:08:01"
+STEP = re.compile(r"^\[\d/\d\] (Extract audio|Detect language|Load model|Transcribe) \.\.\.$")
+PCT = re.compile(r"Transcribe .*?(\d+)%\s+(\S+) / (\S+) .*ETA ~(\S+)")
+STEP_TH = {"Extract audio": "กำลังแยกเสียงจากคลิป…", "Detect language": "กำลังตรวจว่าประชุมพูดภาษาอะไร…",
+           "Load model": "กำลังโหลดโมเดลถอดเสียง…", "Transcribe": "เริ่มถอดเสียง…"}
 PROMPT = ("Use the meeting-summary skill on this recording: {path}\n"
           "Step 1 (transcript + slide frames) has already been run next to the file; continue from step 2. "
           "Nobody is available to answer questions, so run every remaining step to the end.")
@@ -68,6 +72,25 @@ def run(cmd, on_line, cwd=None) -> int:
         if line.strip():
             on_line(line.rstrip())
     return p.wait()
+
+
+def remaining(hms: str) -> str:
+    """"00:08:01" -> "8 นาที", "01:05:00" -> "1 ชม. 5 นาที"; under a minute -> "ไม่ถึง 1 นาที"."""
+    h, m, _ = (int(x) for x in hms.split(":"))
+    if not h and not m:
+        return "ไม่ถึง 1 นาที"
+    return f"{h} ชม. {m} นาที" if h else f"{m} นาที"
+
+
+def transcribe_status(line: str):
+    """transcribe.py output line -> (Thai status text, fraction 0..1 or None), or None if not progress."""
+    m = PCT.search(line)
+    if m:
+        pct, done, total, eta = m.groups()
+        left = f" · เหลืออีกประมาณ {remaining(eta)}" if int(pct) else ""
+        return f"ถอดเสียงแล้ว {pct}% (ถึงนาทีที่ {done} จาก {total}){left}", int(pct) / 100
+    m = STEP.match(line)
+    return (STEP_TH[m.group(1)], None) if m else None
 
 
 def describe(event: dict):
@@ -410,15 +433,24 @@ class App:
 
             def on_transcribe(line):
                 say("log", line)
-                m = PCT.search(line)
-                if m:
-                    say("step", (0, int(m.group(1)) / 100))
+                st = transcribe_status(line)
+                if st:
+                    say("status", st[0])
+                    if st[1] is not None:
+                        say("step", (0, st[1]))
 
             frames = threading.Thread(target=run, args=([str(PY), str(HERE / "frames.py"), str(media)],
                                                         lambda l: say("log", l)))
             frames.start()
-            code = run([str(PY), str(HERE / "transcribe.py"), str(media)], on_transcribe)
+            cmd = [str(PY), str(HERE / "transcribe.py"), str(media)]
+            code = run(cmd, on_transcribe)
+            if code not in (0, 1):  # 1 = handled error with a message; anything else = native crash (GPU driver etc.)
+                say("log", f"transcribe.py crashed (exit {code}); retrying on CPU")
+                say("status", "ลองถอดเสียงใหม่อีกครั้งแบบไม่ใช้การ์ดจอ…")
+                code = run(cmd + ["--cpu", "--force"], on_transcribe)
             frames.join()
+            if code:
+                say("log", f"transcribe.py exit {code}")
             if code:
                 return say("end", (False, "ถอดเสียงไม่สำเร็จ กด “ดูรายละเอียด” เพื่อดูสาเหตุ", None))
 
@@ -451,7 +483,16 @@ class App:
             say("end", (False, f"เกิดข้อผิดพลาด: {e}", None))
 
 
-if __name__ == "__main__":
+if __name__ == "__main__" and sys.argv[1:] == ["--selftest"]:
+    bar = "[4/4] Transcribe ████████░░░░  58%  01:45:12 / 03:01:07  elapsed 00:11:02  ETA ~00:08:01"
+    assert transcribe_status(bar) == ("ถอดเสียงแล้ว 58% (ถึงนาทีที่ 01:45:12 จาก 03:01:07) · เหลืออีกประมาณ 8 นาที", .58)
+    assert transcribe_status(bar.replace(" 58%", "  0%"))[0].endswith("03:01:07)")  # no ETA yet at 0%
+    assert transcribe_status("[2/4] Detect language ...") == (STEP_TH["Detect language"], None)
+    assert transcribe_status("[2/4] Detect language ... done (00:00:05)  th (forced)") is None
+    assert transcribe_status("REUSED existing transcript: x.txt") is None
+    assert remaining("01:05:59") == "1 ชม. 5 นาที" and remaining("00:00:40") == "ไม่ถึง 1 นาที"
+    print("selftest ok")
+elif __name__ == "__main__":
     try:  # crisp text on scaled (125%/150%) laptop screens instead of bitmap-stretched blur
         import ctypes
         ctypes.windll.shcore.SetProcessDpiAwareness(1)

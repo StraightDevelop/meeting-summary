@@ -32,6 +32,9 @@ MIN_CONFIDENCE = 0.5
 # Thai is token-heavy: a 30 s window can exceed Whisper's ~448-token decode limit and the tail
 # is silently dropped (verified on a test clip). 20 s keeps every sentence; English stays at 30 s.
 CHUNK_SECONDS = {"th": 20}
+# CPU batch 6+ overflows ctranslate2's OpenMP worker stack on Windows (exit 127, no traceback;
+# reproduced 2026-10-15 on a 12-min Thai m4a). 2 is as fast as 4 here and leaves headroom on other CPUs.
+CPU_BATCH = 2
 
 
 def load_audio(path: Path) -> np.ndarray:
@@ -184,7 +187,7 @@ def run_faster_whisper(audio, forced_lang, device, prog):
     duration = len(audio) / SR
     # Batched pipeline: VAD splits audio into <=30 s (Thai: 20 s) chunks, decoded in parallel.
     segments, _ = BatchedInferencePipeline(model=model).transcribe(
-        audio, language=lang, task="transcribe", batch_size=8,
+        audio, language=lang, task="transcribe", batch_size=8 if device == "cuda" else CPU_BATCH,
         chunk_length=CHUNK_SECONDS.get(lang, 30), beam_size=5)
     lines = []
     for s in segments:  # lazy generator: decoding happens while iterating
@@ -201,6 +204,7 @@ def main():
     ap.add_argument("--lang", default="auto", help="auto (default), th, en, or any Whisper language code")
     ap.add_argument("--speakers", action="store_true", help="who-said-what (needs pyannote + HF_TOKEN)")
     ap.add_argument("--force", action="store_true", help="re-transcribe even if transcript exists")
+    ap.add_argument("--cpu", action="store_true", help="skip GPUs (app retries with this after a GPU crash; also for testing the no-GPU path)")
     args = ap.parse_args()
 
     src = Path(args.file.strip().strip('"').strip("'")).expanduser().resolve()
@@ -225,7 +229,9 @@ def main():
     prog.done(f"{ts(duration)} of audio")
     forced = None if args.lang == "auto" else args.lang
 
-    if ctranslate2.get_cuda_device_count() > 0:
+    if args.cpu:
+        result = run_faster_whisper(audio, forced, "cpu", prog)
+    elif ctranslate2.get_cuda_device_count() > 0:
         result = run_faster_whisper(audio, forced, "cuda", prog)
     else:
         try:
