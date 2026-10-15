@@ -1,7 +1,7 @@
 # Handover — 2026-10-15 (afternoon)
 
 Branch `main`. Repo: https://github.com/StraightDevelop/meeting-summary (public)
-Pushed through tag `v1.1.1`. OpenVINO models are on releases `whisper-ov-v1` and `typhoon-ov-v1`.
+Pushed through tag `v1.1.2`. OpenVINO models are on releases `whisper-ov-v1` and `typhoon-ov-v1`.
 
 ## Done
 - **Boss's error fixed (v1.1.0, pushed):** on CPU, faster-whisper `batch_size=8` overflowed ctranslate2's OpenMP
@@ -17,10 +17,14 @@ Pushed through tag `v1.1.1`. OpenVINO models are on releases `whisper-ov-v1` and
   Driver used: scratchpad `drv/drive.py` (not in repo).
 
 ## Next steps
-1. Watch the `install-test` GitHub Actions run (clean Windows 2022/2025 VMs: real install.ps1 -NoLogin,
-   CPU transcription of a TTS clip, frames, re-install). Fix anything red.
+1. CI `install-test` (clean windows-2022/2025: real install.ps1 -NoLogin, CPU transcription of a TTS clip,
+   frames, re-install) is green as of run 38704766060. Its first run caught the Thai-named desktop shortcut
+   failing on English-locale Windows (fixed in v1.1.2).
 2. Ask the boss to re-download the ZIP and run Install.bat; get a screenshot if anything is red.
 3. Not covered by CI: Claude login + summary step on a clean machine, Intel GPU path on another laptop.
+
+## Known gaps
+- A Windows user name with Thai characters (non-ASCII %USERPROFILE%) is untested.
 
 ## First action to resume
 `gh run list -R StraightDevelop/meeting-summary` (gh is not logged in; GH_TOKEN from `git credential fill` works).

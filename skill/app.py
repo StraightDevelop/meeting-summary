@@ -18,7 +18,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox
 from tkinter import font as tkfont
 
-APP_VERSION = "1.1.1"  # bump with every release and add a line under "เวอร์ชัน" in README.md
+APP_VERSION = "1.1.2"  # bump with every release and add a line under "เวอร์ชัน" in README.md
 HERE = Path(__file__).resolve().parent
 PY = HERE / ".venv" / "Scripts" / "python.exe"
 # transcribe.py progress: "[2/4] Detect language ..." and "[4/4] Transcribe ███░ 58%  01:45:12 / 03:01:07  elapsed .. ETA ~00:08:01"
