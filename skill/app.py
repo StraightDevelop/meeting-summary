@@ -18,7 +18,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox
 from tkinter import font as tkfont
 
-APP_VERSION = "1.1.0"  # bump with every release and add a line under "เวอร์ชัน" in README.md
+APP_VERSION = "1.1.1"  # bump with every release and add a line under "เวอร์ชัน" in README.md
 HERE = Path(__file__).resolve().parent
 PY = HERE / ".venv" / "Scripts" / "python.exe"
 # transcribe.py progress: "[2/4] Detect language ..." and "[4/4] Transcribe ███░ 58%  01:45:12 / 03:01:07  elapsed .. ETA ~00:08:01"
@@ -75,11 +75,11 @@ def run(cmd, on_line, cwd=None) -> int:
 
 
 def remaining(hms: str) -> str:
-    """"00:08:01" -> "8 นาที", "01:05:00" -> "1 ชม. 5 นาที"; under a minute -> "ไม่ถึง 1 นาที"."""
+    """"00:08:01" -> "ประมาณ 8 นาที", "01:05:00" -> "ประมาณ 1 ชม. 5 นาที"; under a minute -> "ไม่ถึง 1 นาที"."""
     h, m, _ = (int(x) for x in hms.split(":"))
     if not h and not m:
         return "ไม่ถึง 1 นาที"
-    return f"{h} ชม. {m} นาที" if h else f"{m} นาที"
+    return f"ประมาณ {h} ชม. {m} นาที" if h else f"ประมาณ {m} นาที"
 
 
 def transcribe_status(line: str):
@@ -87,7 +87,7 @@ def transcribe_status(line: str):
     m = PCT.search(line)
     if m:
         pct, done, total, eta = m.groups()
-        left = f" · เหลืออีกประมาณ {remaining(eta)}" if int(pct) else ""
+        left = f" · เหลืออีก{remaining(eta)}" if int(pct) else ""
         return f"ถอดเสียงแล้ว {pct}% (ถึงนาทีที่ {done} จาก {total}){left}", int(pct) / 100
     m = STEP.match(line)
     return (STEP_TH[m.group(1)], None) if m else None
@@ -478,6 +478,9 @@ class App:
             if result.get("is_error") or not files:
                 return say("end", (False, "Claude ทำงานไม่สำเร็จ ตรวจว่ามุมขวาบนเข้าสู่ระบบอยู่ แล้วลองใหม่อีกครั้ง", None))
             say("end", (True, "กดเลือกฉบับที่ต้องการ จะเปิดในเบราว์เซอร์", files))
+        except FileNotFoundError as e:  # claude.exe missing or removed after install
+            say("log", repr(e))
+            say("end", (False, "ไม่พบโปรแกรม Claude Code ในเครื่องนี้ ดับเบิลคลิก Install.bat อีกครั้งเพื่อติดตั้ง", None))
         except Exception as e:  # show anything unexpected instead of dying silently (pythonw has no console)
             say("log", repr(e))
             say("end", (False, f"เกิดข้อผิดพลาด: {e}", None))
@@ -490,7 +493,7 @@ if __name__ == "__main__" and sys.argv[1:] == ["--selftest"]:
     assert transcribe_status("[2/4] Detect language ...") == (STEP_TH["Detect language"], None)
     assert transcribe_status("[2/4] Detect language ... done (00:00:05)  th (forced)") is None
     assert transcribe_status("REUSED existing transcript: x.txt") is None
-    assert remaining("01:05:59") == "1 ชม. 5 นาที" and remaining("00:00:40") == "ไม่ถึง 1 นาที"
+    assert remaining("01:05:59") == "ประมาณ 1 ชม. 5 นาที" and remaining("00:00:40") == "ไม่ถึง 1 นาที"
     print("selftest ok")
 elif __name__ == "__main__":
     try:  # crisp text on scaled (125%/150%) laptop screens instead of bitmap-stretched blur

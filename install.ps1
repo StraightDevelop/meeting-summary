@@ -9,11 +9,32 @@ $Models = @{
     'whisper-large-v3-turbo' = 'https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/main'
     'typhoon-whisper-turbo'  = 'https://github.com/StraightDevelop/meeting-summary/releases/download/models-v1'
 }
+# Intel GPU (OpenVINO) copies: ~4x faster than CPU, only fetched when the laptop has an Intel GPU
+$OvFiles = 'config.json', 'generation_config.json', 'preprocessor_config.json', 'processor_config.json',
+    'tokenizer.json', 'tokenizer_config.json', 'openvino_encoder_model.xml', 'openvino_encoder_model.bin',
+    'openvino_decoder_model.xml', 'openvino_decoder_model.bin', 'openvino_tokenizer.xml', 'openvino_tokenizer.bin',
+    'openvino_detokenizer.xml', 'openvino_detokenizer.bin'
+$OvModels = @{
+    'whisper-large-v3-turbo-ov' = 'https://github.com/StraightDevelop/meeting-summary/releases/download/whisper-ov-v1'
+    'typhoon-whisper-turbo-ov'  = 'https://github.com/StraightDevelop/meeting-summary/releases/download/typhoon-ov-v1'
+}
 $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
 
 function Step($n, $msg) { Write-Host "`n[$n/6] $msg" -ForegroundColor Cyan }
 function Have($cmd) { [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
 function Check($what) { if ($LASTEXITCODE) { throw "$what (exit $LASTEXITCODE)" } }
+function Fetch($models, $files) {
+    foreach ($name in $models.Keys) {
+        $dir = "$Dest\models\$name"
+        New-Item -ItemType Directory -Force $dir | Out-Null
+        foreach ($f in $files) {
+            if (Test-Path "$dir\$f") { continue }
+            Write-Host "  $name/$f"
+            curl.exe -L --fail --retry 5 -C - -o "$dir\$f.part" "$($models[$name])/$f"; Check "download $f"
+            Move-Item "$dir\$f.part" "$dir\$f"
+        }
+    }
+}
 
 try {
     Step 1 'คัดลอกโปรแกรม'
@@ -25,16 +46,11 @@ try {
     uv venv --allow-existing --python 3.12 "$Dest\.venv"; Check 'uv venv'
     uv pip install --python "$Dest\.venv\Scripts\python.exe" -r "$Dest\requirements.txt"; Check 'pip install'
 
-    Step 3 'ดาวน์โหลดโมเดลถอดเสียง (~3.2 GB, หลุดแล้วเปิดใหม่จะต่อจากเดิม)'
-    foreach ($name in $Models.Keys) {
-        $dir = "$Dest\models\$name"
-        New-Item -ItemType Directory -Force $dir | Out-Null
-        foreach ($f in $Files) {
-            if (Test-Path "$dir\$f") { continue }
-            Write-Host "  $name/$f"
-            curl.exe -L --fail --retry 5 -C - -o "$dir\$f.part" "$($Models[$name])/$f"; Check "download $f"
-            Move-Item "$dir\$f.part" "$dir\$f"
-        }
+    Step 3 'ดาวน์โหลดโมเดลถอดเสียง (~3.2 GB, มีการ์ดจอ Intel เพิ่มอีก ~3.2 GB, หลุดแล้วเปิดใหม่จะต่อจากเดิม)'
+    Fetch $Models $Files
+    if (Get-CimInstance Win32_VideoController | Where-Object Name -like '*Intel*') {
+        try { Fetch $OvModels $OvFiles }  # optional speed-up: without it transcription still runs on CPU
+        catch { Write-Host "  ข้ามโมเดลการ์ดจอ Intel ($_) ถอดเสียงยังใช้ได้ แต่ช้ากว่า" -ForegroundColor Yellow }
     }
 
     Step 4 'ติดตั้ง Git (Claude Code ต้องใช้)'
