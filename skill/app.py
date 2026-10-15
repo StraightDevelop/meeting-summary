@@ -18,7 +18,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox
 from tkinter import font as tkfont
 
-APP_VERSION = "1.1.2"  # bump with every release and add a line under "เวอร์ชัน" in README.md
+APP_VERSION = "1.2.0"  # bump with every release and add a line under "เวอร์ชัน" in README.md
 HERE = Path(__file__).resolve().parent
 PY = HERE / ".venv" / "Scripts" / "python.exe"
 # transcribe.py progress: "[2/4] Detect language ..." and "[4/4] Transcribe ███░ 58%  01:45:12 / 03:01:07  elapsed .. ETA ~00:08:01"
@@ -29,6 +29,10 @@ STEP_TH = {"Extract audio": "กำลังแยกเสียงจากค
 PROMPT = ("Use the meeting-summary skill on this recording: {path}\n"
           "Step 1 (transcript + slide frames) has already been run next to the file; continue from step 2. "
           "Nobody is available to answer questions, so run every remaining step to the end.")
+PROMPT_PARTS = ("Use the meeting-summary skill on this meeting, recorded as {n} files in this order:\n{paths}\n"
+                "It is ONE meeting: follow the multi-part section of SKILL.md, output stem `{stem}`. "
+                "Step 1 (transcript + slide frames) has already been run next to each file; continue from step 2. "
+                "Nobody is available to answer questions, so run every remaining step to the end.")
 CLAUDE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "PowerShell"]
 
 # Monochrome palette: white page, light-grey cards, black hero; colour only in status badges.
@@ -72,6 +76,16 @@ def run(cmd, on_line, cwd=None) -> int:
         if line.strip():
             on_line(line.rstrip())
     return p.wait()
+
+
+def part_order(paths):
+    """Natural filename order, so "Recording 9" comes before "Recording 10"."""
+    return sorted(paths, key=lambda p: [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", p.name)])
+
+
+def output_stem(medias) -> str:
+    """One file -> its own stem; several parts of one meeting -> first part's stem + "_รวม"."""
+    return medias[0].stem + ("_รวม" if len(medias) > 1 else "")
 
 
 def remaining(hms: str) -> str:
@@ -406,53 +420,56 @@ class App:
     def pick(self):
         if self.account is not None and not self.logged_in():
             return self.auth_action()  # log in first instead of failing 20 minutes later
-        f = filedialog.askopenfilename(title="เลือกไฟล์ประชุม", filetypes=[
+        fs = filedialog.askopenfilenames(title="เลือกไฟล์ประชุม (ประชุมเดียวกันเลือกได้หลายไฟล์)", filetypes=[
             ("คลิปประชุม", "*.mp4 *.mov *.mkv *.webm *.mp3 *.m4a *.wav"), ("ทุกไฟล์", "*.*")])
-        if f:
-            self.start(Path(f))
+        if fs:
+            self.start([Path(f) for f in fs])
 
-    def start(self, media: Path):
+    def start(self, medias):
+        medias = part_order(medias)
         self.running = True
         self.btn.set_enabled(False)
         self.results.pack_forget()
         self.status.pack(fill="x")
         self.reveal.pack_forget()
-        self.file.configure(text=media.name)
+        self.file.configure(text=medias[0].name + (f"  + อีก {len(medias) - 1} ไฟล์" if len(medias) > 1 else ""))
         self.hint.pack_forget()  # keep the window short enough for a 1080p laptop at 150%
         self.badge.set("run")
         self.steps.reset()
         self.steps.set(0, 0)
-        threading.Thread(target=self.work, args=(media,), daemon=True).start()
+        threading.Thread(target=self.work, args=(medias,), daemon=True).start()
 
     # --- worker-thread side -----------------------------------------------------------------
-    def work(self, media: Path):
+    def work(self, medias):
         say = lambda kind, val=None: self.q.put((kind, val))
         try:
-            say("log", f"ไฟล์: {media}")
-            say("status", "กำลังถอดเสียงและเก็บภาพสไลด์ในเครื่องนี้…")
+            n = len(medias)
+            for i, media in enumerate(medias):
+                part = f"ไฟล์ {i + 1}/{n} · " if n > 1 else ""
+                say("log", f"ไฟล์ {i + 1}/{n}: {media}")
+                say("status", part + "กำลังถอดเสียงและเก็บภาพสไลด์ในเครื่องนี้…")
 
-            def on_transcribe(line):
-                say("log", line)
-                st = transcribe_status(line)
-                if st:
-                    say("status", st[0])
-                    if st[1] is not None:
-                        say("step", (0, st[1]))
+                def on_transcribe(line, i=i, part=part):
+                    say("log", line)
+                    st = transcribe_status(line)
+                    if st:
+                        say("status", part + st[0])
+                        if st[1] is not None:  # one bar across all parts
+                            say("step", (0, (i + st[1]) / n))
 
-            frames = threading.Thread(target=run, args=([str(PY), str(HERE / "frames.py"), str(media)],
-                                                        lambda l: say("log", l)))
-            frames.start()
-            cmd = [str(PY), str(HERE / "transcribe.py"), str(media)]
-            code = run(cmd, on_transcribe)
-            if code not in (0, 1):  # 1 = handled error with a message; anything else = native crash (GPU driver etc.)
-                say("log", f"transcribe.py crashed (exit {code}); retrying on CPU")
-                say("status", "ลองถอดเสียงใหม่อีกครั้งแบบไม่ใช้การ์ดจอ…")
-                code = run(cmd + ["--cpu", "--force"], on_transcribe)
-            frames.join()
-            if code:
-                say("log", f"transcribe.py exit {code}")
-            if code:
-                return say("end", (False, "ถอดเสียงไม่สำเร็จ กด “ดูรายละเอียด” เพื่อดูสาเหตุ", None))
+                frames = threading.Thread(target=run, args=([str(PY), str(HERE / "frames.py"), str(media)],
+                                                            lambda l: say("log", l)))
+                frames.start()
+                cmd = [str(PY), str(HERE / "transcribe.py"), str(media)]
+                code = run(cmd, on_transcribe)
+                if code not in (0, 1):  # 1 = handled error with a message; anything else = native crash (GPU driver etc.)
+                    say("log", f"transcribe.py crashed (exit {code}); retrying on CPU")
+                    say("status", part + "ลองถอดเสียงใหม่อีกครั้งแบบไม่ใช้การ์ดจอ…")
+                    code = run(cmd + ["--cpu", "--force"], on_transcribe)
+                frames.join()
+                if code:
+                    say("log", f"transcribe.py exit {code}")
+                    return say("end", (False, part + "ถอดเสียงไม่สำเร็จ กด “ดูรายละเอียด” เพื่อดูสาเหตุ", None))
 
             say("step", (1, 0))
             say("creep", True)
@@ -470,10 +487,13 @@ class App:
                 if text:
                     say("log", text)
 
-            run([claude_exe(), "-p", PROMPT.format(path=media), "--output-format", "stream-json", "--verbose",
+            stem = output_stem(medias)
+            prompt = PROMPT.format(path=medias[0]) if n == 1 else PROMPT_PARTS.format(
+                n=n, stem=stem, paths="\n".join(f"{i + 1}. {m}" for i, m in enumerate(medias)))
+            run([claude_exe(), "-p", prompt, "--output-format", "stream-json", "--verbose",
                  "--permission-mode", "acceptEdits", "--allowedTools", *CLAUDE_TOOLS],
-                on_claude, cwd=str(media.parent))
-            files = [(media.with_name(media.stem + suffix), title, desc) for suffix, title, desc in OUTPUTS]
+                on_claude, cwd=str(medias[0].parent))
+            files = [(medias[0].with_name(stem + suffix), title, desc) for suffix, title, desc in OUTPUTS]
             files = [f for f in files if f[0].exists()]
             if result.get("is_error") or not files:
                 return say("end", (False, "Claude ทำงานไม่สำเร็จ ตรวจว่ามุมขวาบนเข้าสู่ระบบอยู่ แล้วลองใหม่อีกครั้ง", None))
@@ -494,6 +514,9 @@ if __name__ == "__main__" and sys.argv[1:] == ["--selftest"]:
     assert transcribe_status("[2/4] Detect language ... done (00:00:05)  th (forced)") is None
     assert transcribe_status("REUSED existing transcript: x.txt") is None
     assert remaining("01:05:59") == "ประมาณ 1 ชม. 5 นาที" and remaining("00:00:40") == "ไม่ถึง 1 นาที"
+    names = ["Rec 10.m4a", "Rec 9.m4a", "rec 2b.m4a"]
+    assert [p.name for p in part_order([Path(x) for x in names])] == ["rec 2b.m4a", "Rec 9.m4a", "Rec 10.m4a"]
+    assert output_stem([Path("a/x.m4a")]) == "x" and output_stem([Path("a/x.m4a"), Path("a/y.m4a")]) == "x_รวม"
     print("selftest ok")
 elif __name__ == "__main__":
     try:  # crisp text on scaled (125%/150%) laptop screens instead of bitmap-stretched blur
@@ -504,6 +527,7 @@ elif __name__ == "__main__":
         pass
     root = tk.Tk()
     app = App(root)
-    if len(sys.argv) > 1 and Path(sys.argv[1]).is_file():  # file dropped onto the desktop shortcut
-        root.after(300, app.start, Path(sys.argv[1]))
+    dropped = [Path(a) for a in sys.argv[1:] if Path(a).is_file()]  # files dropped onto the desktop shortcut
+    if dropped:
+        root.after(300, app.start, dropped)
     root.mainloop()

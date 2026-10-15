@@ -15,6 +15,14 @@ Deliverables, all next to the recording:
 | `<stem>_detailed.html` | full report, clean UI, opened in a browser, images inlined (one file) | `report_template.html` |
 | `<stem>_plain.html` | **same full content, no UI** — plain headings/bullets/tables, easy for the boss to copy into Word/email and reuse | `email_template.html` styles |
 
+## Multi-part recordings (one meeting, several files)
+
+When given several files of the **same** meeting, treat them as one meeting in the given order (natural filename order if none is given):
+- Step 1: run transcribe.py + frames.py once per file (transcribe one file at a time; each frames.py can run alongside).
+- Step 2: read every `<part stem>_transcript.txt` in order as one continuous meeting, and every part's `<part stem>_frames/`.
+- Step 3–4: write ONE set of deliverables next to the first file, with `<stem>` = `<first file's stem>_รวม` (e.g. `Rec 1_รวม_executive.html`). Put cropped slides from any part into `<stem>_frames/email/` named `pN_HH-MM-SS.jpg`.
+- Cite times as `ไฟล์ N · HH:MM:SS` (each part's clock restarts at 00:00:00). Meta pills / source note list every part with its duration.
+
 ## 1. Transcribe + capture slides (in parallel)
 
 Strip surrounding quotes from the path. Start BOTH with the **PowerShell** tool, `run_in_background: true`:

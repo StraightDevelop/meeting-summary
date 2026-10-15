@@ -1,7 +1,7 @@
 # Handover — 2026-10-15 (afternoon)
 
 Branch `main`. Repo: https://github.com/StraightDevelop/meeting-summary (public)
-Pushed through tag `v1.1.2`. OpenVINO models are on releases `whisper-ov-v1` and `typhoon-ov-v1`.
+Pushed through tag `v1.2.0`. OpenVINO models are on releases `whisper-ov-v1` and `typhoon-ov-v1`.
 
 ## Done
 - **Boss's error fixed (v1.1.0, pushed):** on CPU, faster-whisper `batch_size=8` overflowed ctranslate2's OpenMP
@@ -15,6 +15,10 @@ Pushed through tag `v1.1.2`. OpenVINO models are on releases `whisper-ov-v1` and
 - Tested on this machine: full 12:53 Thai m4a on CPU (6m16s, 2.1x) and Intel GPU (1m29s, 8.7x); app window
   end-to-end with real Claude on a 2-min clip (3 HTML produced in ~5 min); simulated-crash retry.
   Driver used: scratchpad `drv/drive.py` (not in repo).
+
+- v1.2.0: one meeting recorded as several files — pick them together (or drop them on the shortcut);
+  natural filename order, one summary `<first stem>_รวม_*`, times cited `ไฟล์ N · HH:MM:SS`. Tested in the app with
+  2 parts passed in reverse order (sorted correctly, combined report produced).
 
 ## Next steps
 1. CI `install-test` (clean windows-2022/2025: real install.ps1 -NoLogin, CPU transcription of a TTS clip,
