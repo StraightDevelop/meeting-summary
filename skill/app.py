@@ -18,31 +18,40 @@ from pathlib import Path
 from tkinter import filedialog, messagebox
 from tkinter import font as tkfont
 
-APP_VERSION = "1.2.0"  # bump with every release and add a line under "เวอร์ชัน" in README.md
+APP_VERSION = "1.3.0"  # bump with every release and add a line under "เวอร์ชัน" in README.md
 HERE = Path(__file__).resolve().parent
 PY = HERE / ".venv" / "Scripts" / "python.exe"
+SPEED = HERE / "speed.json"  # this machine's measured transcription speed + Claude minutes, for the estimate
 # transcribe.py progress: "[2/4] Detect language ..." and "[4/4] Transcribe ███░ 58%  01:45:12 / 03:01:07  elapsed .. ETA ~00:08:01"
 STEP = re.compile(r"^\[\d/\d\] (Extract audio|Detect language|Load model|Transcribe) \.\.\.$")
 PCT = re.compile(r"Transcribe .*?(\d+)%\s+(\S+) / (\S+) .*ETA ~(\S+)")
+# step timings -> pure transcription speed (model load excluded: estimate() adds that per file)
+AUDIO_LEN = re.compile(r"^\[1/4\] Extract audio \.\.\. done \(\S+\)\s+(\d+):(\d+):(\d+) of audio")
+TRANSCRIBED = re.compile(r"^\[4/4\] Transcribe \.\.\. done \((\d+):(\d+):(\d+)\)")
 STEP_TH = {"Extract audio": "กำลังแยกเสียงจากคลิป…", "Detect language": "กำลังตรวจว่าประชุมพูดภาษาอะไร…",
            "Load model": "กำลังโหลดโมเดลถอดเสียง…", "Transcribe": "เริ่มถอดเสียง…"}
+# The app lists the summaries itself; opening them from Claude adds stray browser tabs, and on a PC with no
+# .eml handler Windows shows "Pick an app", which minimized the app window in testing.
+NO_OPEN = "Do not open any output file (no Start-Process / Invoke-Item on .html or .eml); this app lists them for the user."
 PROMPT = ("Use the meeting-summary skill on this recording: {path}\n"
           "Step 1 (transcript + slide frames) has already been run next to the file; continue from step 2. "
-          "Nobody is available to answer questions, so run every remaining step to the end.")
+          "Nobody is available to answer questions, so run every remaining step to the end. " + NO_OPEN)
 PROMPT_PARTS = ("Use the meeting-summary skill on this meeting, recorded as {n} files in this order:\n{paths}\n"
                 "It is ONE meeting: follow the multi-part section of SKILL.md, output stem `{stem}`. "
                 "Step 1 (transcript + slide frames) has already been run next to each file; continue from step 2. "
-                "Nobody is available to answer questions, so run every remaining step to the end.")
+                "Nobody is available to answer questions, so run every remaining step to the end. " + NO_OPEN)
 CLAUDE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "PowerShell"]
 
 # Monochrome palette: white page, light-grey cards, black hero; colour only in status badges.
 BG, CARD, INK, MUTED, TRACK, DIM = "#FFFFFF", "#F4F4F5", "#0A0A0A", "#8A8A8F", "#DCDCE0", "#A1A1A6"
-BADGES = {"idle": ("#EFEFF1", "#6B6B70", "รอไฟล์"), "run": ("#E8F0FE", "#3B7BEA", "กำลังทำงาน"),
+BADGES = {"idle": ("#EFEFF1", "#6B6B70", "รอไฟล์"), "ready": ("#EFEFF1", INK, "พร้อมเริ่ม"), "run": ("#E8F0FE", "#3B7BEA", "กำลังทำงาน"),
           "ok": ("#E7F6EC", "#1E9E4A", "เสร็จแล้ว"), "fail": ("#FDECEC", "#D93A3A", "ไม่สำเร็จ")}
 STEPS = ["ถอดเสียง", "เขียนสรุป", "สรุปพร้อม"]
 OUTPUTS = [("_executive.html", "สรุปผู้บริหาร", "อ่านจบใน 3 นาที ตัวเลขสำคัญครบ"),
            ("_detailed.html", "รายงานฉบับเต็ม", "ทุกหัวข้อ พร้อมภาพสไลด์จากคลิป"),
            ("_plain.html", "ฉบับข้อความล้วน", "ไม่มีดีไซน์ ก๊อปไปวางใน Word หรืออีเมลได้ทันที")]
+MAX_ROWS = 6  # more rows push the window past a 1080p laptop screen at 150%
+HINT = "วิดีโอหรือเสียง · ประชุมเดียวกันที่อัดไว้หลายไฟล์ ทยอยเพิ่มได้ แล้วค่อยกดเริ่มสรุป"
 SCALE = 1.0  # screen DPI / 96, set once the Tk root exists
 
 
@@ -94,6 +103,90 @@ def remaining(hms: str) -> str:
     if not h and not m:
         return "ไม่ถึง 1 นาที"
     return f"ประมาณ {h} ชม. {m} นาที" if h else f"ประมาณ {m} นาที"
+
+
+def dur_th(minutes: float) -> str:
+    """75 -> "1 ชม. 15 นาที", 20 -> "20 นาที"."""
+    h, m = divmod(max(1, round(minutes)), 60)
+    return (f"{h} ชม. {m} นาที" if m else f"{h} ชม.") if h else f"{m} นาที"
+
+
+def estimate(secs, x: float, claude_min=None):
+    """Minutes (low, high) until the summary is ready.
+
+    secs = media seconds still to transcribe; x = realtime factor of this machine (+30 s model load per file);
+    Claude takes 5-15 min unless this machine has a measured time.
+    """
+    t = sum(secs) / x / 60 + 0.5 * len(secs)
+    c_lo, c_hi = (claude_min * 0.8, claude_min * 1.3) if claude_min else (5, 15)
+    return t + c_lo, t * 1.3 + c_hi
+
+
+def estimate_th(lo: float, hi: float) -> str:
+    end = lambda m: time.strftime("%H:%M", time.localtime(time.time() + m * 60))
+    span = f"{round(lo)}–{round(hi)} นาที" if hi < 60 else f"{dur_th(lo)} – {dur_th(hi)}"
+    return f"ใช้เวลาประมาณ {span} · เสร็จราว {end(lo)}–{end(hi)} น."
+
+
+def load_speed() -> dict:
+    """Measured speed from earlier runs, else a guess from the GPU the installer found."""
+    try:
+        return json.loads(SPEED.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    if shutil.which("nvidia-smi"):
+        return {"x": 15}
+    if (HERE / "models" / "typhoon-whisper-turbo-ov").exists():  # installer fetches these only for Intel GPUs
+        return {"x": 8}
+    return {"x": 2}
+
+
+def learn_speed(line: str, audio: dict):
+    """Save this machine's realtime factor from transcribe.py's step timings (audio = per-file scratch dict)."""
+    hms = lambda m: int(m[1]) * 3600 + int(m[2]) * 60 + int(m[3])
+    if m := AUDIO_LEN.match(line):
+        audio["secs"] = hms(m)
+    elif (m := TRANSCRIBED.match(line)) and audio.get("secs") and hms(m) >= 5:  # < 5 s: rounding noise
+        save_speed(x=round(audio["secs"] / hms(m), 1))
+
+
+def save_speed(**kw):
+    try:
+        SPEED.write_text(json.dumps({**load_speed(), **kw}), encoding="utf-8")
+    except OSError:
+        pass  # estimate only; never fail a run over it
+
+
+def media_seconds(path: Path):
+    """Length of a recording in seconds; 0 if ffprobe can't read it (not a recording / broken);
+    None if ffprobe itself didn't run, so a missing tool never blocks a run."""
+    try:
+        import static_ffmpeg
+        static_ffmpeg.add_paths(weak=True)
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+                             creationflags=subprocess.CREATE_NO_WINDOW)  # stderr may hold a Thai path
+    except Exception:
+        return None
+    try:
+        return float(out.stdout.strip().splitlines()[0])
+    except (ValueError, IndexError):
+        return 0
+
+
+def fit(text: str, measure, width: int) -> str:
+    """Cut the middle of a long name until measure(text) fits width, keeping the end (part number, extension).
+    Measured, not counted: Thai and Latin letters differ in width; a too-wide label would widen the window."""
+    if measure(text) <= width:
+        return text
+    head, tail = text[:-8], text[-8:]
+    while head and measure(head + "…" + tail) > width:
+        head = head[:-1]
+    return head + "…" + tail
+
+
+def transcript_of(media: Path) -> Path:
+    return media.with_name(f"{media.stem}_transcript.txt")  # transcribe.py reuses it, so no time needed
 
 
 def transcribe_status(line: str):
@@ -154,11 +247,16 @@ class Pill(tk.Canvas):
     """Fully rounded button; `dim` = (fill, ink) used while disabled."""
 
     def __init__(self, parent, text, command, fill, ink, dim, height=48, size=12):
-        super().__init__(parent, bg=parent["bg"], height=px(height), highlightthickness=0, bd=0, cursor="hand2")
+        # width=1: Canvas asks for 378 px by default, two side by side would widen the window; callers fill/expand
+        super().__init__(parent, bg=parent["bg"], width=1, height=px(height), highlightthickness=0, bd=0, cursor="hand2")
         self.text, self.command, self.colors, self.dim, self.size = text, command, (fill, ink), dim, size
         self.enabled = True
         self.bind("<Configure>", lambda e: self.draw())
         self.bind("<Button-1>", lambda e: self.enabled and self.command())
+
+    def restyle(self, text, fill, ink):
+        self.text, self.colors = text, (fill, ink)
+        self.draw()
 
     def set_enabled(self, on: bool):
         self.enabled = on
@@ -273,15 +371,23 @@ class App:
         hero = Card(page, INK, radius=24, pad=22)
         hero.pack(fill="x")
         h = hero.body
-        tk.Label(h, text="ไฟล์ประชุม · ได้สรุป 3 ฉบับเปิดในเบราว์เซอร์", font=font(9), bg=INK, fg=DIM).pack(anchor="w")
+        self.caption = tk.Label(h, text="ไฟล์ประชุม · ได้สรุป 3 ฉบับเปิดในเบราว์เซอร์", font=font(9), bg=INK, fg=DIM)
+        self.caption.pack(anchor="w")
         self.file = tk.Label(h, text="ยังไม่ได้เลือกไฟล์", font=font(15, "bold"), bg=INK, fg="white",
                              anchor="w", justify="left")
         self.file.pack(fill="x", pady=(px(2), px(2)))
+        self.rows = tk.Frame(h, bg=INK)  # picked files, one row each, until "เริ่มสรุป"
         h.bind("<Configure>", lambda e: self.file.configure(wraplength=e.width), add="+")
-        self.hint = tk.Label(h, text="วิดีโอหรือเสียง · คลิปยาวอาจใช้เวลาเป็นชั่วโมง", font=font(9), bg=INK, fg=DIM)
-        self.hint.pack(anchor="w")
-        self.btn = Pill(h, "เลือกไฟล์ประชุม", self.pick, fill="white", ink=INK, dim=("#2C2C2E", "#6B6B70"))
-        self.btn.pack(fill="x", pady=(px(18), 0))
+        self.hint = tk.Label(h, text=HINT, font=font(9), bg=INK, fg=DIM, anchor="w", justify="left", wraplength=px(400))
+        self.hint.pack(fill="x")
+        h.bind("<Configure>", lambda e: self.hint.configure(wraplength=e.width), add="+")
+        self.btns = btns = tk.Frame(h, bg=INK)
+        btns.pack(fill="x", pady=(px(18), 0))
+        self.btn = Pill(btns, "เลือกไฟล์ประชุม", self.pick, fill="white", ink=INK, dim=("#2C2C2E", "#6B6B70"))
+        self.btn.pack(side="left", fill="x", expand=True)
+        self.go = Pill(btns, "เริ่มสรุป", self.begin, fill="white", ink=INK, dim=("#2C2C2E", "#6B6B70"))
+        self.name_font = tkfont.Font(font=font(11, "bold"))
+        self.pending, self.secs = [], {}  # files waiting for "เริ่มสรุป"; media seconds per file (probed in background)
 
         prog = Card(page, CARD, radius=20, pad=20)
         prog.pack(fill="x", pady=(px(12), 0))
@@ -293,7 +399,7 @@ class App:
         self.badge.pack(side="right")
         self.steps = Steps(p)
         self.steps.pack(fill="x", pady=(px(16), px(4)))
-        self.status = tk.Label(p, text="เลือกไฟล์เพื่อเริ่ม", font=font(10), bg=CARD, fg=MUTED,
+        self.status = tk.Label(p, text="เลือกไฟล์ แล้วกดเริ่มสรุป", font=font(10), bg=CARD, fg=MUTED,
                                anchor="w", justify="left")
         self.status.pack(fill="x")
         p.bind("<Configure>", lambda e: self.status.configure(wraplength=e.width), add="+")
@@ -363,6 +469,22 @@ class App:
             self.logcard.pack(fill="x", pady=(px(10), 0))
             self.toggle.configure(text="ซ่อนรายละเอียด ▴")
 
+    def keep_on_screen(self):
+        """Windows opens the window part-way down; when it grows (results, file rows) lift it so the bottom
+        stays above the taskbar instead of hiding the footer."""
+        r = self.root
+        r.update_idletasks()
+        try:
+            from ctypes import byref, windll, wintypes
+            area = wintypes.RECT()
+            windll.user32.SystemParametersInfoW(48, 0, byref(area), 0)  # SPI_GETWORKAREA: screen minus taskbar
+            bottom = area.bottom
+        except Exception:
+            bottom = r.winfo_screenheight() - px(48)
+        over = r.winfo_rooty() + r.winfo_height() + px(8) - bottom
+        if over > 0:
+            r.geometry(f"+{r.winfo_x()}+{max(0, r.winfo_y() - over)}")
+
     def show_results(self, files):
         for w in self.results.body.winfo_children():
             w.destroy()
@@ -381,6 +503,7 @@ class App:
             for w in (row, text, *text.winfo_children()):  # whole row is the click target
                 w.bind("<Button-1>", lambda e, p=path: os.startfile(p))  # opens in the default browser
         self.results.pack(fill="x", pady=(px(12), 0), before=self.foot)
+        self.root.after_idle(self.keep_on_screen)
 
     def pump(self):
         while not self.q.empty():
@@ -398,13 +521,23 @@ class App:
                 self.show_auth(val)
             elif kind == "creep":
                 self.creeping = val
+            elif kind == "secs":
+                self.secs[val[0]] = val[1]
+                self.render_pending()
             elif kind == "end":
                 ok, msg, files = val
                 self.creeping = self.running = False
                 self.btn.set_enabled(True)
+                if ok:
+                    self.pending = []  # next pick starts a new meeting; on failure the list stays for a retry
+                self.render_pending()  # before the badge: an empty list resets it to "idle"
                 self.badge.set("ok" if ok else "fail")
                 self.status.configure(text=msg, fg=INK if ok else "#D93A3A")
+                if self.root.state() == "iconic":  # something minimized us while Claude worked
+                    self.root.deiconify()
+                self.root.lift()
                 if ok:
+                    self.hint.pack_forget()  # results card is tall: keep the footer on a 1080p laptop at 150%
                     self.files = [f for f, _, _ in files]
                     self.steps.set(3, 0)
                     self.status.pack_forget()
@@ -423,17 +556,99 @@ class App:
         fs = filedialog.askopenfilenames(title="เลือกไฟล์ประชุม (ประชุมเดียวกันเลือกได้หลายไฟล์)", filetypes=[
             ("คลิปประชุม", "*.mp4 *.mov *.mkv *.webm *.mp3 *.m4a *.wav"), ("ทุกไฟล์", "*.*")])
         if fs:
-            self.start([Path(f) for f in fs])
+            self.add([Path(f) for f in fs])
+
+    def add(self, medias):
+        """Queue files (more picks append, duplicates ignored); nothing runs until "เริ่มสรุป"."""
+        known = {m.resolve() for m in self.pending}
+        new = [m for m in medias if m.resolve() not in known]
+        if not self.running and self.results.winfo_ismapped():  # a new meeting after a finished one
+            self.results.pack_forget()
+            self.reveal.pack_forget()
+            self.steps.reset()
+            self.status.configure(text="เลือกไฟล์ แล้วกดเริ่มสรุป", fg=MUTED)
+            self.status.pack(fill="x")
+            self.hint.pack(fill="x", before=self.btns)
+        self.pending = part_order(self.pending + new)
+        for m in new:
+            threading.Thread(target=lambda m=m: self.q.put(("secs", (m, media_seconds(m)))), daemon=True).start()
+        self.render_pending()
+
+    def remove(self, media):
+        self.pending.remove(media)
+        self.render_pending()
+
+    def render_pending(self):
+        """Hero card: file rows + time estimate + "เริ่มสรุป" while files wait; one name line otherwise."""
+        for w in self.rows.winfo_children():
+            w.destroy()
+        if self.running or not self.pending:
+            self.rows.pack_forget()
+            self.go.pack_forget()
+            self.file.pack(fill="x", pady=(px(2), px(2)), after=self.caption)  # hint may be hidden (done state)
+            self.btn.restyle("เลือกไฟล์ประชุม", "white", INK)
+            if not self.running:
+                self.hint.configure(text=HINT)
+                self.badge.set("idle")
+            return
+        self.badge.set("ready")
+        self.file.pack_forget()
+        self.rows.pack(fill="x", pady=(px(6), px(6)), after=self.caption)
+        shown = self.pending if len(self.pending) <= MAX_ROWS else self.pending[:MAX_ROWS - 1]
+        for i, m in enumerate(shown):
+            row = tk.Frame(self.rows, bg=INK)
+            row.pack(fill="x", pady=px(2))
+            x = link(row, "✕", lambda m=m: self.remove(m))
+            x.configure(bg=INK, fg=DIM, font=font(11))
+            x.base = DIM
+            x.bind("<Enter>", lambda e, x=x: x.configure(fg="white"))
+            x.pack(side="right", padx=(px(10), 0))
+            s = self.secs.get(m)
+            length = "…" if m not in self.secs else "?" if s is None else "เปิดไม่ได้" if not s else                 time.strftime("%H:%M:%S", time.gmtime(s))
+            tk.Label(row, text=length, font=font(9), bg=INK, fg="#FF8A8A" if s == 0 else DIM).pack(side="right")
+            name = f"{i + 1}. {m.name}" if len(self.pending) > 1 else m.name
+            tk.Label(row, text=fit(name, self.name_font.measure, px(290)), font=self.name_font,
+                     bg=INK, fg="white", anchor="w").pack(side="left", fill="x", expand=True)
+        if len(shown) < len(self.pending):
+            tk.Label(self.rows, text=f"…และอีก {len(self.pending) - len(shown)} ไฟล์ (ลบไฟล์ด้านบนเพื่อดูไฟล์ถัดไป)",
+                     font=font(9), bg=INK, fg=DIM, anchor="w").pack(fill="x", pady=px(2))
+        self.hint.configure(text=self.estimate_text())
+        self.btn.restyle("+ เพิ่มไฟล์", "#2C2C2E", "white")
+        self.go.restyle(f"เริ่มสรุป ({len(self.pending)} ไฟล์)" if len(self.pending) > 1 else "เริ่มสรุป", "white", INK)
+        # estimate first (ffprobe takes ~1 s); a file ffprobe can't open would only fail later in transcription
+        self.go.set_enabled(all(m in self.secs and self.secs[m] != 0 for m in self.pending))
+        self.go.pack(side="left", fill="x", expand=True, padx=(px(10), 0))
+        self.root.after_idle(self.keep_on_screen)
+
+    def estimate_text(self) -> str:
+        if any(m not in self.secs for m in self.pending):
+            return "กำลังคำนวณเวลาที่ใช้…"
+        if any(self.secs[m] == 0 for m in self.pending):
+            return "ไฟล์ที่ขึ้นว่า “เปิดไม่ได้” ไม่ใช่คลิปเสียง/วิดีโอ หรือไฟล์เสีย กด ✕ ลบออกก่อนเริ่ม"
+        todo = [self.secs[m] for m in self.pending if not transcript_of(m).exists()]
+        speed = load_speed()
+        unknown = " (บางไฟล์ไม่รู้ความยาว เวลาจริงอาจนานกว่านี้)" if None in todo else ""
+        todo = [t for t in todo if t]
+        many = " · ทุกไฟล์รวมเป็นประชุมเดียว" if len(self.pending) > 1 else ""
+        return estimate_th(*estimate(todo, speed["x"], speed.get("claude_min"))) + unknown + many
+
+    def begin(self):
+        if self.running or not self.go.enabled:  # durations still loading, or a file that can't be opened
+            return
+        if self.account is not None and not self.logged_in():
+            return self.auth_action()
+        self.start(self.pending)
 
     def start(self, medias):
         medias = part_order(medias)
         self.running = True
+        self.render_pending()
         self.btn.set_enabled(False)
         self.results.pack_forget()
         self.status.pack(fill="x")
         self.reveal.pack_forget()
         self.file.configure(text=medias[0].name + (f"  + อีก {len(medias) - 1} ไฟล์" if len(medias) > 1 else ""))
-        self.hint.pack_forget()  # keep the window short enough for a 1080p laptop at 150%
+        self.hint.configure(text=self.estimate_text() if self.pending else HINT)
         self.badge.set("run")
         self.steps.reset()
         self.steps.set(0, 0)
@@ -449,8 +664,11 @@ class App:
                 say("log", f"ไฟล์ {i + 1}/{n}: {media}")
                 say("status", part + "กำลังถอดเสียงและเก็บภาพสไลด์ในเครื่องนี้…")
 
-                def on_transcribe(line, i=i, part=part):
+                audio = {}
+
+                def on_transcribe(line, i=i, part=part, audio=audio):
                     say("log", line)
+                    learn_speed(line, audio)
                     st = transcribe_status(line)
                     if st:
                         say("status", part + st[0])
@@ -488,6 +706,7 @@ class App:
                     say("log", text)
 
             stem = output_stem(medias)
+            t0 = time.time()
             prompt = PROMPT.format(path=medias[0]) if n == 1 else PROMPT_PARTS.format(
                 n=n, stem=stem, paths="\n".join(f"{i + 1}. {m}" for i, m in enumerate(medias)))
             run([claude_exe(), "-p", prompt, "--output-format", "stream-json", "--verbose",
@@ -497,6 +716,7 @@ class App:
             files = [f for f in files if f[0].exists()]
             if result.get("is_error") or not files:
                 return say("end", (False, "Claude ทำงานไม่สำเร็จ ตรวจว่ามุมขวาบนเข้าสู่ระบบอยู่ แล้วลองใหม่อีกครั้ง", None))
+            save_speed(claude_min=(time.time() - t0) / 60)
             say("end", (True, "กดเลือกฉบับที่ต้องการ จะเปิดในเบราว์เซอร์", files))
         except FileNotFoundError as e:  # claude.exe missing or removed after install
             say("log", repr(e))
@@ -517,6 +737,18 @@ if __name__ == "__main__" and sys.argv[1:] == ["--selftest"]:
     names = ["Rec 10.m4a", "Rec 9.m4a", "rec 2b.m4a"]
     assert [p.name for p in part_order([Path(x) for x in names])] == ["rec 2b.m4a", "Rec 9.m4a", "Rec 10.m4a"]
     assert output_stem([Path("a/x.m4a")]) == "x" and output_stem([Path("a/x.m4a"), Path("a/y.m4a")]) == "x_รวม"
+    assert [round(m, 2) for m in estimate([600], 2)] == [10.5, 22.15] and estimate([], 2, 10) == (8, 13)  # 10-min clip on CPU; all reused
+    import tempfile
+    SPEED = Path(tempfile.mkdtemp()) / "speed.json"
+    scratch = {}
+    for line in ["[1/4] Extract audio ... done (00:00:01)  00:12:53 of audio", "[4/4] Transcribe ███ 100%  x",
+                 "[4/4] Transcribe ... done (00:01:29)"]:
+        learn_speed(line, scratch)
+    assert load_speed()["x"] == 8.7, load_speed()  # 773 s of audio in 89 s
+    assert fit("a.m4a", len, 42) == "a.m4a" and fit("x" * 60 + ".mp4", len, 42) == "x" * 33 + "…" + "x" * 4 + ".mp4"
+    assert dur_th(20) == "20 นาที" and dur_th(75) == "1 ชม. 15 นาที" and dur_th(120) == "2 ชม."
+    assert estimate_th(8, 21).startswith("ใช้เวลาประมาณ 8–21 นาที · เสร็จราว ")
+    assert estimate_th(50, 95).startswith("ใช้เวลาประมาณ 50 นาที – 1 ชม. 35 นาที")
     print("selftest ok")
 elif __name__ == "__main__":
     try:  # crisp text on scaled (125%/150%) laptop screens instead of bitmap-stretched blur
@@ -529,5 +761,5 @@ elif __name__ == "__main__":
     app = App(root)
     dropped = [Path(a) for a in sys.argv[1:] if Path(a).is_file()]  # files dropped onto the desktop shortcut
     if dropped:
-        root.after(300, app.start, dropped)
+        root.after(300, app.add, dropped)  # wait for "เริ่มสรุป": more parts may follow
     root.mainloop()

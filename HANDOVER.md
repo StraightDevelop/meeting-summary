@@ -1,33 +1,31 @@
-# Handover — 2026-10-15 (afternoon)
+# Handover — 2026-10-16
 
 Branch `main`. Repo: https://github.com/StraightDevelop/meeting-summary (public)
-Pushed through tag `v1.2.0`. OpenVINO models are on releases `whisper-ov-v1` and `typhoon-ov-v1`.
+Latest release `v1.3.0`. OpenVINO models are on releases `whisper-ov-v1` and `typhoon-ov-v1`.
 
 ## Done
-- **Boss's error fixed (v1.1.0, pushed):** on CPU, faster-whisper `batch_size=8` overflowed ctranslate2's OpenMP
-  worker stack on Windows → exit 127, no output, log stopped at "[4/4] Transcribe ...". Every installed
-  machine without NVIDIA hit it (installer never shipped the OpenVINO models, so all fell to CPU).
-  Repro: `transcribe.py "<file>" --cpu --force` with batch 8. Batch 6 crashes, 4/2/1 pass; now `CPU_BATCH = 2`.
-- App: status line shows step + `ถอดเสียงแล้ว N% (ถึงนาทีที่ … จาก …) · เหลืออีก…`; retries once with
-  `--cpu --force` on a native crash (exit not 0/1) and logs the exit code; clear Thai message if claude.exe missing.
-- Installer (v1.1.1, local): downloads the `*-ov` models only when an Intel GPU is present; a failed
-  download is skipped with a warning (CPU still works). Tested the 404 skip path.
-- Tested on this machine: full 12:53 Thai m4a on CPU (6m16s, 2.1x) and Intel GPU (1m29s, 8.7x); app window
-  end-to-end with real Claude on a 2-min clip (3 HTML produced in ~5 min); simulated-crash retry.
-  Driver used: scratchpad `drv/drive.py` (not in repo).
-
-- v1.2.0: one meeting recorded as several files — pick them together (or drop them on the shortcut);
-  natural filename order, one summary `<first stem>_รวม_*`, times cited `ไฟล์ N · HH:MM:SS`. Tested in the app with
-  2 parts passed in reverse order (sorted correctly, combined report produced).
+- **v1.3.0 (boss's request):** files are queued, not run — "+ เพิ่มไฟล์" appends (also drop on the shortcut),
+  ✕ removes, natural-order numbering; work starts only on "เริ่มสรุป (N ไฟล์)". A failed run keeps the list.
+- **Time estimate** under the list: `ใช้เวลาประมาณ X–Y นาที · เสร็จราว HH:MM–HH:MM น.`
+  = media length (ffprobe) / speed + 30 s per file + Claude 5–15 min. Speed guessed from GPU (CPU 2x, Intel 8x,
+  NVIDIA 15x) until a run measures it; `speed.json` in the install dir keeps the transcribe-step speed
+  (model load excluded) and Claude minutes. Files with an existing transcript count as Claude-only.
+- Hardening found by the end-to-end driver: Thai path in ffprobe stderr (cp874 decode crash), Pill canvases
+  widening the window, long names (pixel-measured middle cut), >6 files (rows capped), unreadable file
+  (red "เปิดไม่ได้", start blocked; ffprobe missing never blocks), stale results on a new meeting,
+  footer below the taskbar after results (window lifted to the work area; likely present in v1.2 too).
+- Tested on this machine (Intel GPU): installer over existing install; e2e driver (scratchpad `e2e.py`,
+  not in repo) drives the installed app: broken/duplicate/remove/8 files/long name/2-part + single real runs.
+  Estimate 4–7 min vs actual 5.3 min after calibration.
 
 ## Next steps
-1. CI `install-test` (clean windows-2022/2025: real install.ps1 -NoLogin, CPU transcription of a TTS clip,
-   frames, re-install) is green as of run 38704766060. Its first run caught the Thai-named desktop shortcut
-   failing on English-locale Windows (fixed in v1.1.2).
-2. Ask the boss to re-download the ZIP and run Install.bat; get a screenshot if anything is red.
-3. Not covered by CI: Claude login + summary step on a clean machine, Intel GPU path on another laptop.
+1. Ask the boss to re-download the ZIP and run Install.bat; first estimate is the GPU guess, then calibrated.
+2. Not covered: a real hour-long meeting (estimate accuracy), Claude login on a clean machine, Intel GPU on
+   another laptop, a 1080p screen (lift logic tested on a 1200-px work area only).
 
 ## Known gaps
+- Dropping files onto the open window is not supported (Tk has no native drag-and-drop); use the button or the shortcut.
+- All queued files are treated as one meeting.
 - A Windows user name with Thai characters (non-ASCII %USERPROFILE%) is untested.
 
 ## First action to resume
