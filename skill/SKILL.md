@@ -21,7 +21,7 @@ When given several files of the **same** meeting, treat them as one meeting in t
 - Step 1: run transcribe.py + frames.py once per file (transcribe one file at a time; each frames.py can run alongside).
 - Step 2: read every `<part stem>_transcript.txt` in order as one continuous meeting, and every part's `<part stem>_frames/`.
 - Step 3–4: write ONE set of deliverables next to the first file, with `<stem>` = `<first file's stem>_รวม` (e.g. `Rec 1_รวม_executive.html`). Put cropped slides from any part into `<stem>_frames/email/` named `pN_HH-MM-SS.jpg`.
-- Cite times as `ไฟล์ N · HH:MM:SS` (each part's clock restarts at 00:00:00). Meta pills / source note list every part with its duration.
+- Readers never see timestamps (they have no recording). Meta pills / source note list every part with its duration.
 
 ## 1. Transcribe + capture slides (in parallel)
 
@@ -60,13 +60,37 @@ Thai unless the user asks otherwise; keep business terms in English. First decid
 | Team sync / operations / general | topic-by-topic summary (one section per agenda item) · issues & resolutions · decisions | – (omit stamp) | only if the meeting quoted numbers |
 | Training / briefing / town hall | key messages · what changes for us · Q&A highlights | – (omit stamp) | usually none |
 
-Always end the detailed report with **Action items** (owner chips, due dates; unknown → `–`) and **Open questions**; include **Risks** whenever any were raised. Every number in KPI cards/bars must come from a slide or a clearly heard statement.
+**Fixed section order for every meeting type** (the reader always finds the same thing in the same place):
+`01 บทสรุปผู้บริหาร` → `02 การตัดสินใจ` (what was decided, by whom; "ยังไม่มีการตัดสินใจ" if none) → `03 Action items` (owner chips, due dates; unknown → `–`) → the type's sections from the table → `ความเสี่ยง` (when any were raised) → `คำถามที่ยังค้าง` → source note.
+Every number in KPI cards/bars must come from a slide or a clearly heard statement.
+
+Reader rules (both full versions and the email; approved by the user 2026-11-20):
+- **Every number states its unit, period and comparison basis** in the table header, section `unit` pill or KPI label: e.g. `ล้านบาท · Q3/69 · เทียบแผน`. A growth % never stands alone: say vs what (แผน / ปีก่อน / ไตรมาสก่อน).
+- **Jargon gets a Thai gloss on first use** (`GP bridge (สิ่งที่ทำให้กำไรขั้นต้นขึ้นลง)`, `working capital (เงินทุนหมุนเวียน)`, `mix (สัดส่วนสินค้า/ลูกค้า)`), plain term after that. Write for a reader outside the board too.
+- **No timestamps** (`HH:MM:SS`, `นาทีที่`) anywhere a reader sees: the reader has no recording. Cite slides by page only.
+- **No `[ไม่ชัด]` inside the body.** Write only what was heard clearly; anything unclear or garbled (name, number, decision) goes to `คำถามที่ยังค้าง` as a question to confirm (e.g. "ยอดขาย Q4 ที่ได้ยินคือ 1,2xx ล้านบาท ต้องยืนยันตัวเลข").
+
+### Readability rules (adapted from the user's deck rules, `team/playbooks/presentation-style.md` in the jump_agents repo; approved 2026-11-20)
+Apply to the detailed and plain reports; the email follows the same spirit.
+- **Action titles.** Each section `<h2>` is a one-sentence conclusion with its number, not a topic name.
+  Good: "กำไรขั้นต้นลด 2.3 ล้านบาท เพราะต้นทุนวัตถุดิบขึ้น" · Bad: "GP bridge". The TOC keeps the short topic name.
+  Reading only the h2s top to bottom should tell the whole meeting. Same for the email's bold headlines.
+- **One section, one point.** Each section carries one main visual (table, bars, cards, or a slide) plus at most 3 evidence bullets; don't repeat the visual's numbers as a second list.
+- **Big to small.** Within a section, overall first, then breakdown. Tables and bars sorted largest to smallest (or by impact), unless time order matters.
+- **Point at the answer.** Highlight the row/bar that is the point (`hl`, `focus`, `hot`); the rest stays grey.
+- **Numbers that read at a glance.** Signed growth (+8.1%, −2.3%). A tiny change that confuses (e.g. +0.1%) is written as a word ("ทรงตัว", "แทบไม่โต") with the exact value in the plain version's table. Bar widths are computed from the values (script or the formula in the kit), never eyeballed.
+- **Compare like with like.** Options/accounts/projects as table rows, the same criteria as columns for every row.
+- **Two sources disagree** (slide vs. speaker, two slides): show both values and say which is used; add the gap to คำถามที่ยังค้าง.
+- **Source line per section** that has numbers: `ที่มา: สไลด์หน้า N | บันทึกเสียง` (kit `source`).
+- **Long detail goes to an appendix section** at the end (e.g. per-subsidiary tables), main sections keep the summary.
+- **Doesn't look AI-made.** No box with a thick coloured border on one side or a vertical colour strip; boxes use a light fill or a thin border all round.
+- **Check before handing over:** in the headless screenshots, no text overflowing its box, every h2 ≤ 2 lines, no half-empty section.
 
 ### 3a. `<stem>_executive.html` — the email body, readable in under 3 minutes
 **Copy `email_template.html`** and fill it. Outlook-safe (inline styles + tables only — Outlook strips modern CSS). Title prefix `[Executive Summary]`, max 720px, ~one screen, greeting `เรียน ทุกท่าน`, no sign-off (the sender's Outlook signature closes it):
 1. **Bottom line** box: verdict/decision/status + the one number or fact that matters, 2–3 lines
-2. **Key facts table**, 4–6 rows — numbers with growth (red when worse) or, for non-numeric meetings, หัวข้อ | สถานะ
-3. **3 ประเด็นที่ควรทราบ** — bold headline + 2–3 short sub-bullets each
+2. **Key facts table**, 4–6 rows — numbers with growth (red when worse) or, for non-numeric meetings, หัวข้อ | สถานะ. Title states unit · period · comparison basis
+3. **ประเด็นที่ควรทราบ**, at most 3 (only the ones that matter; 1 or 2 is fine, never pad to 3) — bold headline + 2–3 short sub-bullets each
 4. **ด้านบวก** (optional) and **ขั้นตอนต่อไป** (max 3)
 5. At most 1 slide image, then the line pointing to the attached `<stem>_detailed.html`
 
@@ -80,12 +104,12 @@ Slides: put the chosen frames under the bullet they support, 8–15 images max. 
 mkdir -p "<stem>_frames/email" && ffmpeg -v error -y -i "<stem>_frames/HH-MM-SS.jpg" -vf "crop=W:H:X:Y" -q:v 3 "<stem>_frames/email/HH-MM-SS.jpg"
 ```
 (ffmpeg = `.venv\Scripts\static_ffmpeg.exe`; Teams 1280x720 frame → `crop=1108:628:6:62`; check one crop visually.)
-In the report use the template's `<figure>` slide component (click to zoom), src `<stem URL-encoded>_frames/email/HH-MM-SS.jpg`, caption `ภาพ NN · what · หน้า X · HH:MM:SS`. Pair related slides two per row (`.shots`), a single key slide full width (`.shots one`).
+In the report use the template's `<figure>` slide component (click to zoom), src `<stem URL-encoded>_frames/email/HH-MM-SS.jpg`, caption `ภาพ NN · what · สไลด์หน้า X`. Pair related slides two per row (`.shots`), a single key slide full width (`.shots one`).
 
-Rules: names, numbers, amounts, dates, company/product terms exactly as on the slide or as spoken; garbled/unsure → `[ไม่ชัด]`; never invent decisions or action items; end with a source note.
+Rules: names, numbers, amounts, dates, company/product terms exactly as on the slide or as spoken; garbled/unsure → a question in `คำถามที่ยังค้าง`, never `[ไม่ชัด]` in the body; never invent decisions or action items; end with a source note.
 
 ### 3c. `<stem>_plain.html` — same full content, no UI
-Write it right after 3b with **identical content and section order** (same numbers, bullets, tables, action items, open questions, slides), but in the plain email-safe style of `email_template.html`: inline styles only, `<h2>` title + one context line, numbered `<h3>` section headers (blue underline), bullets with nested sub-bullets, `<table border=1 cellpadding=6>` tables, slides as `<img width="680" style="width:100%;max-width:680px">` + a `ภาพ N: what (สไลด์หน้า X · นาทีที่ HH:MM:SS)` caption. No KPI cards, bars, stamps, TOC, scripts or web fonts. No greeting / sign-off. Title prefix `[ฉบับธรรมดา]`.
+Write it right after 3b with **identical content and section order** (same numbers, bullets, tables, action items, open questions, slides), but in the plain email-safe style of `email_template.html`: inline styles only, `<h2>` title + one context line, numbered `<h3>` section headers (blue underline), bullets with nested sub-bullets, `<table border=1 cellpadding=6>` tables, slides as `<img width="680" style="width:100%;max-width:680px">` + a `ภาพ N: what (สไลด์หน้า X)` caption. No KPI cards, bars, stamps, TOC, scripts or web fonts. No greeting / sign-off. Title prefix `[ฉบับธรรมดา]`.
 
 ## 4. Package, check, open
 
