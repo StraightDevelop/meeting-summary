@@ -12,12 +12,13 @@
 <p>สรุปสั้นการประชุม{{TOPIC}} ของ {{PARTIES}} วันที่ {{DATE}} ครับ</p>
 
 <!-- Bottom line: the verdict / decision / status in 2–3 lines, with the one number or fact that matters -->
-<table cellpadding="12" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;background:#fff4e5;border-left:5px solid #e67e22;">
+<table cellpadding="12" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;background:#fff4e5;border:1px solid #f3d3a6;">
   <tr><td style="font-size:15px;"><b>ข้อสรุป:</b> {{BOTTOM LINE}}</td></tr>
 </table>
 
 <!-- Key facts table: 4–6 rows. Numbers meeting → one column per entity/period with growth; red (#c0392b) for deteriorating.
-     No-numbers meeting → two columns: หัวข้อ | สถานะ/ผลลัพธ์ (e.g. timeline, budget used, owner, decision). Omit if nothing tabular. -->
+     No-numbers meeting → two columns: หัวข้อ | สถานะ/ผลลัพธ์ (e.g. timeline, budget used, owner, decision). Omit if nothing tabular.
+     Title MUST state unit · period · comparison basis, e.g. "ตัวเลขหลัก (ล้านบาท · Q3/69 · เทียบแผน)"; growth column header names the basis ("vs แผน" / "vs ปีก่อน"). -->
 <h3 style="margin:22px 0 8px;font-size:16px;color:#0b4f8a;border-bottom:2px solid #0b4f8a;padding-bottom:4px;">{{KEY FACTS TITLE}}</h3>
 <table cellpadding="6" cellspacing="0" border="1" style="border-collapse:collapse;border-color:#cfd8e3;font-size:13px;width:100%;">
   <tr style="background:#0b4f8a;color:#ffffff;"><th align="left"></th><th align="right">{{COL}}</th></tr>
@@ -25,7 +26,7 @@
   <tr style="background:#f4f7fb;"><td>{{ROW}}</td><td align="right">{{VALUE}}</td></tr>
 </table>
 
-<h3 style="margin:22px 0 8px;font-size:16px;color:#0b4f8a;border-bottom:2px solid #0b4f8a;padding-bottom:4px;">3 ประเด็นที่ควรทราบ</h3>
+<h3 style="margin:22px 0 8px;font-size:16px;color:#0b4f8a;border-bottom:2px solid #0b4f8a;padding-bottom:4px;">ประเด็นที่ควรทราบ</h3>
 <ol style="margin:0;padding-left:20px;">
   <li style="margin-bottom:8px;"><b>{{HEADLINE}}</b>
     <ul style="padding-left:18px;"><li>{{FACT}}</li><li>{{FACT}}</li></ul></li>
